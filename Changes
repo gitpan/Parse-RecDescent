@@ -329,3 +329,22 @@ Revision history for Perl extension Parse::RecDescent.
 	- Changed error report on bad regexes to level 3 warning, since 
 	  compile-time interpolation failure may falsely invalidate
 	  regexes that would work at run-time.
+
+
+1.70	Fri Oct  8 14:15:36 1999
+
+	- Clarified use of "eofile" idiom in POD file
+	  Clarified meaning of "free-form" in description of grammars
+	  Fixed <resync> examples, which were invalidated by 
+	  earlier change in semantics of <error>. (Thanks Knut).
+
+	- Added grammar precompiler (see documentation)
+
+	- Tweaked message for <reject> optimization.
+
+	- Fixed bug when using '@' as a terminal (thanks Abigail)
+
+	- Fixed nasty bug when $return set to zero
+
+	- Added <score> and <autoscore> directives (see documentation)
+

@@ -13,6 +13,71 @@ use vars qw ( $skip );
    $skip  = '\s*';		# UNIVERSAL SEPARATOR IS OPTIONAL WHITESPACE
 my $MAXREP  = 100_000_000;	# REPETITIONS MATCH AT MOST 100,000,000 TIMES
 
+
+sub import	# IMPLEMENT PRECOMPILER BEHAVIOUR UNDER:
+		#    perl -MParse::RecDescent - <grammarfile> <classname>
+{
+	local *_die = sub { print @_, "\n"; exit };
+
+	my (undef, $file, $line) = caller;
+	if (substr($file,0,1) eq '-' && $line == 0)
+	{
+		_die("Usage: perl -MLocalTest - <grammarfile> <classname>")
+			unless @ARGV == 2;
+
+		my ($sourcefile, $class) = @ARGV;
+
+		open IN, $sourcefile
+			or _die("Can't open grammar file '$sourcefile'");
+
+		my $grammar = join '', <IN>;
+
+		Parse::RecDescent->Precompile($grammar, $class, $sourcefile);
+		exit;
+	}
+}
+		
+
+sub Precompile
+{
+		my (undef, $grammar, $class, $sourcefile) = @_;
+
+		$class =~ /^(\w+::)*\w+$/ or _die("Bad class name: $class");
+
+		my $modulefile = $class;
+		$modulefile =~ s/.*:://;
+		$modulefile .= ".pm";
+
+		open OUT, ">$modulefile"
+			or _die("Can't open new module file '$modulefile'");
+
+		print STDERR "precompiling grammar from file '$sourcefile'\n",
+			     "to class $class in module file '$modulefile'\n"
+					if $sourcefile;
+
+		local $::RD_HINT = 1;
+		my $self = Parse::RecDescent->new($grammar)
+			or _die("Can't compile bad grammar");
+
+		$self->{rules}{$_}{changed} = 1
+			foreach ( keys %{$self->{rules}} );
+
+		print OUT "package $class;\nuse Parse::RecDescent;\n\n";
+
+		print OUT "{ my \$ERRORS;\n\n";
+
+		print OUT $self->_code();
+
+		print OUT "}\npackage $class; sub new { ";
+		print OUT "my ";
+
+		require Data::Dumper;
+		print OUT Data::Dumper->Dump([$self], [qw(self)]);
+
+		print OUT "}";
+}
+
+
 package Parse::RecDescent::LineCounter;
 
 
@@ -239,6 +304,14 @@ sub addvar
 	return 1;
 }
 
+sub addautoscore
+{
+	my ( $self, $code ) = @_;
+	$self->{"autoscore"} = $code;
+	$self->{"changed"} = 1;
+	return 1;
+}
+
 sub nextoperator($)
 {
 	my $self = shift;
@@ -282,6 +355,8 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	'
 	my $err_at = @{$thisparser->{errors}};
 
+	my $score;
+	my $score_return;
 	my $_tok;
 	my $return = undef;
 	my $_matched=0;
@@ -312,6 +387,7 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	my $prod;
 	foreach $prod ( @{$self->{"prods"}} )
 	{
+		$prod->addscore($self->{autoscore},0,0) if $self->{autoscore};
 		next unless $prod->checkleftmost();
 		$code .= $prod->code($namespace,$self,$parser);
 
@@ -324,7 +400,7 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 
 	$code .=
 '
-        unless ( $_matched || $return )
+        unless ( $_matched || defined($return) || defined($score) )
 	{
 		' .($parser->{deferrable}
 			? '		splice @{$thisparser->{deferred}}, $def_at;
@@ -337,6 +413,13 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 					 q{' . $self->{"name"} .'})
 					if defined $::RD_TRACE;
 		return undef;
+	}
+	if (!defined($return) && defined($score))
+	{
+		Parse::RecDescent::_trace(q{>>Accepted scored production<<}, "",
+					  q{' . $self->{"name"} .'})
+						if defined $::RD_TRACE;
+		$return = $score_return;
 	}
 	splice @{$thisparser->{errors}}, $err_at;
 	$return = $item[$#item] unless defined $return;
@@ -444,12 +527,32 @@ sub checkleftmost($)
 		push @{$_[0]->{items}},
 			Parse::RecDescent::UncondReject->new(0,0,'<reject>');
 	}
-	elsif (@items && ref($items[0]) =~ /\AParse::RecDescent::UncondReject/)
+	elsif (@items==1 && ($items[0]->describe||"") =~ /<rulevar|<autoscore/)
+	{
+		# Do nothing
+	}
+	elsif (@items &&
+		( ref($items[0]) =~ /\AParse::RecDescent::UncondReject/
+		|| ($items[0]->describe||"") =~ /<autoscore/
+		))
 	{
 		Parse::RecDescent::_warn(1,"Optimizing away production: [". $_[0]->describe ."]");
-		Parse::RecDescent::_hint("The production starts with an unconditional <reject>,
-		       or a <rulevar> (which is equivalent to a <reject>). In either case
-		       the production can never successfully match.");
+		my $what = $items[0]->describe =~ /<rulevar/
+				? "a <rulevar> (which acts like an unconditional <reject> during parsing)"
+		         : $items[0]->describe =~ /<autoscore/
+				? "an <autoscore> (which acts like an unconditional <reject> during parsing)"
+				: "an unconditional <reject>";
+		my $caveat = $items[0]->describe =~ /<rulevar/
+				? " after the specified variable was set up"
+				: "";
+		my $advice = @items > 1
+				? "However, there were also other (useless) items after the leading "
+				  . $items[0]->describe
+				  . ", so you may have been expecting some other behaviour."
+				: "You can safely ignore this message.";
+		Parse::RecDescent::_hint("The production starts with $what. That means that the
+					  production can never successfully match, so it was
+					  optimized out of the final parser$caveat. $advice");
 		return 0;
 	}
 	return 1;
@@ -474,6 +577,19 @@ sub adddirective
 	push @{$self->{op}},
 		{ type=>$whichop, line=>$line,
 		  offset=> scalar(@{$self->{items}}) };
+}
+
+sub addscore
+{
+	my ( $self, $code, $lookahead, $line ) = @_;
+	$self->additem(Parse::RecDescent::Directive->new(
+			      "local \$^W;
+			       my \$thisscore = do { $code } + 0;
+			       if (!defined(\$score) || \$thisscore>\$score)
+					{ \$score=\$thisscore; \$score_return=\$item[-1]; }
+			       undef;", $lookahead, $line,"<score: $code>") )
+		unless $self->{items}[-1]->describe =~ /<score/;
+	return 1;
 }
 
 sub check_pending
@@ -1139,7 +1255,8 @@ sub code($$$$)
 					if defined $::RD_TRACE;
 		if (1) { no strict qw{refs};
 		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
-				: 'qq{'.$self->describe.'}' ) . ')->at($text);
+				# WAS : 'qq{'.$self->describe.'}' ) . ')->at($text);
+				: 'q{'.$self->describe.'}' ) . ')->at($text);
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' )
 		. ($self->{"lookahead"}<0?'if':'unless')
 		. ' (defined ($_tok = '
@@ -1249,7 +1366,8 @@ sub code($$$$)
 				  q{' . $rule->{"name"} . '})
 					if defined $::RD_TRACE;
 		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
-				: 'qq{'.$self->describe.'}' ) . ')->at($text);
+				# WAS : 'qq{'.$self->describe.'}' ) . ')->at($text);
+				: 'q{'.$self->describe.'}' ) . ')->at($text);
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) .'
 		unless (defined ($_tok = $thisparser->_parserepeat($text, '
 		. $self->callsyntax($namespace.'::')
@@ -1340,7 +1458,8 @@ sub code($$$$)
 				  q{' . $rule->{"name"} . '})
 					if defined $::RD_TRACE;
 		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
-				: 'qq{'.$self->describe.'}' ) . ')->at($text);
+				# WAS : 'qq{'.$self->describe.'}' ) . ')->at($text);
+				: 'q{'.$self->describe.'}' ) . ')->at($text);
 
 		$_tok = undef;
 		OPLOOP: while (1)
@@ -1492,7 +1611,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.66';
+$VERSION = '1.70';
 
 # BUILDING A PARSER
 
@@ -1583,6 +1702,8 @@ my $COMMITMK		= '\A\s*<commit>';
 my $UNCOMMITMK		= '\A\s*<uncommit>';
 my $REJECTMK		= '\A\s*<reject>';
 my $CONDREJECTMK	= '\A\s*<reject:';
+my $SCOREMK		= '\A\s*<score:';
+my $AUTOSCOREMK		= '\A\s*<autoscore:';
 my $SKIPMK		= '\A\s*<skip:';
 my $OPMK		= '\A\s*<(left|right)op:';
 my $ENDDIRECTIVEMK	= '\A\s*>((?:\(\?\))?)';
@@ -1717,6 +1838,29 @@ sub _generate($$$;$$)
 				      "($1) ? undef : 1", $lookahead,$line,"<reject:$code>");
 			$prod and $prod->additem($item)
 			      or  _no_rule("<reject:$code>",$line);
+		}
+		elsif ($grammar =~ m/$SCOREMK/
+			and do { ($code,$grammar)
+					= extract_codeblock($grammar,'<{');
+				  $code })
+		{
+			_parse("a score marker", $aftererror,$line);
+			$code =~ /\A\s*<score:(.*)>\Z/s;
+			$prod and $prod->addscore($1, $lookahead, $line)
+			      or  _no_rule($code,$line);
+		}
+		elsif ($grammar =~ m/$AUTOSCOREMK/
+			and do { $code = extract_codeblock($grammar,'<>{}') } )
+		{
+			_parse("an autoscore specifier", $aftererror,$line,$code);
+			$code =~ /\A\s*<autoscore:(.*)>\Z/s;
+
+			$rule and $rule->addautoscore($1,$self)
+			      or  _no_rule($code,$line);
+
+			$item = new Parse::RecDescent::UncondReject($lookahead,$line,$code);
+			$prod and $prod->additem($item)
+			      or  _no_rule($code,$line);
 		}
 		elsif ($grammar =~ s/$RESYNCMK//)
 		{

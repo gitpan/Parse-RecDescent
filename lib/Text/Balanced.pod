@@ -79,7 +79,7 @@ Text::Balanced - Extract delimited text sequences from strings.
 # much faster (i.e. 3 times faster). It uses qr// for better performance on
 # repeated calls, so it only works under Perl 5.005 or later.
 
-	$extract_head = gen_extract_tagged('<HEAD>','<\\HEAD>');
+	$extract_head = gen_extract_tagged('<HEAD>','</HEAD>');
 
 	($extracted, $remainder) = $extract_head->($text);
 

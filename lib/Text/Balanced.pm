@@ -9,6 +9,16 @@ use Exporter;
 use SelfLoader;
 use vars qw { $VERSION @ISA %EXPORT_TAGS };
 
+sub delimited_pat($;$);
+sub extract_delimited(;$$$$);
+sub extract_bracketed(;$$$);
+sub extract_tagged(;$$$$$);
+sub extract_variable(;$$);
+sub extract_codeblock(;$$$$);
+sub extract_quotelike(;$$);
+sub extract_multiple(;$$$$);
+sub gen_extract_tagged(;$$$$);
+
 $VERSION = '1.66';
 @ISA		= qw ( Exporter );
 		     
@@ -251,7 +261,7 @@ sub extract_tagged (;$$$$$)
 		}
 		elsif ($text =~ m/\A($ldel)/s)
 		{
-			if (!defined extract_tagged($text, @_[1..$#_]))
+			if (!defined extract_tagged($text, $_[1], $_[2], $_[3], $_[4]))
 			{
 				goto short if ($omode eq 'PARA' || $omode eq 'MAX');
 				$@ = "Found unbalanced nested tag: $1";

@@ -15,28 +15,23 @@ my $parser = new Parse::RecDescent $Grammar  or  die "invalid grammar";
 undef $/;
 my $text = @ARGV ? <> : <DATA>;
 
-my $parts = $parser->program($text) or die "malformed C program";
+$parser->program($text) or die "malformed C program";
 
-print "Comments\n========\n$parts->{comments}\n";
-print "\nCode\n====\n$parts->{code}\n";
-print "\nStrings\n=======\n", map(qq{\t"$_"\n}, @{$parts->{strings}});
+print "Comments\n========\n$parser->{comments}\n";
+print "\nCode\n====\n$parser->{code}\n";
+print "\nStrings\n=======\n", map(qq{\t"$_"\n}, @{$parser->{strings}});
 
 BEGIN
 { $Grammar=<<'EOF';
 
-program : <rulevar: local $WithinComment=0>
-program : <rulevar: local $Comments = ""> /this shouldn't be here :-/
-program : <reject>
-program : <reject> /with prejudice/
-program : <rulevar: local $Code = "">
-program : <rulevar: local @Strings>
+program	: <skip:''> { @{$thisparser}{qw(comments code strings)} = () }
+	  part(s)
 
-program	: <skip:''> part(s)
-		{ { code=>$Code, comments=>$Comments, strings=>[@Strings]} }
-
-part	: comment
-        | C_code
-        | string
+part	: comment { $thisparser->{comments} .= $item[1];
+        	    $thisparser->{code}     .= " "; }
+        | C_code  { $thisparser->{code}     .= $item[1]; }
+        | string  { $thisparser->{code}     .= qq("$item[1]");
+		    push @{$thisparser->{strings}}, $item[1]; }
 
 C_code  : m{(			
 	      [^"/]+		# one or more non-delimiters
@@ -46,7 +41,6 @@ C_code  : m{(
 	      )?		# 
 	    )+			# all repeated once or more
 	   }x
-		{ $Code .= $item[1] }
 
 string	: m{"			# a leading delimiter
 	    ((			# zero or more...
@@ -56,7 +50,7 @@ string	: m{"			# a leading delimiter
 	     )*
 	    )
 	    "}x
-		{ $Code .= $item[1]; push @Strings, $1 }
+		{ $return =  $1 }
 
 
 comment	: m{\s*			# optional whitespace
@@ -64,7 +58,6 @@ comment	: m{\s*			# optional whitespace
 	    [^\n]*		# anything except a newline
 	    \n			# then a newline
 	   }x
-		{ $Code .= "\n"; $Comments .= $item[1] }
 
 	| m{\s*			# optional whitespace
 	    /\*			# comment opener
@@ -72,7 +65,6 @@ comment	: m{\s*			# optional whitespace
 	    \*/		        # comment closer
             ([ \t]*)?           # trailing blanks or tabs
 	   }x	
-		{ $Code .= " "; $Comments .= $item[1] }
 
 EOF
 }

@@ -13,19 +13,22 @@ q{
 	     	 |	statement    "\n" {1}
 	     	 |	/bye|quit|exit/ { exit }
 		 |	<reject:!$text> <error>     # ERROR IF NOT END OF TEXT
-		 |	<resync>
+		 |	{ print STDERR "resyncing\n" }
+
+			{ _error(@$_) foreach @{$thisparser->{errors}}; }
+			<resync>
 
 	statement:	namelist are <commit> 'next' 'to' namelist
 				{ ::nextto $item[1], $item[6], $thisline; 1 }
 		 |	<error?> <reject>
 
-	who_question
-		 :	'who' <commit> are 'next' 'to' name '?'
+	who_question:
+			'who' <commit> are 'next' 'to' name '?'
 				{ ::whonextto $item[6] ; 1 }
 		 |	<error?> <reject>
 
-	is_question
-		 :	'is' <commit> name 'next' 'to' name '?'
+	is_question:
+			'is' <commit> name 'next' 'to' name '?'
 				{ ::isnextto($item[3], $item[6]); 1 }
 		 |	<error?> <reject>
 

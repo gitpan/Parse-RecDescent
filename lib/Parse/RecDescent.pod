@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.66 of Parse::RecDescent,
-released July  2, 1999.
+This document describes version 1.70 of Parse::RecDescent,
+released October  8, 1999.
 
 =head1 SYNOPSIS
 
@@ -126,10 +126,15 @@ looks like this:
 
 If the rule through which parsing is initiated succeeds, its value (see below)
 is returned. Failure to generate the original parser or failure to match a text
-is indicated by returning C<undef>.
+is indicated by returning C<undef>. Note that it's easy to set up grammars
+that can succeed, but which return a value of 0, "0", or "".  So don't be
+tempted to write:
 
-Normally, the parser has no effect on the original text. So in the previous example
-the value of $text would be unchanged after having been parsed.
+	$parser->startrule($text) or print "Bad text!\n";
+
+Normally, the parser has no effect on the original text. So in the
+previous example the value of $text would be unchanged after having
+been parsed.
 
 If, however, the text to be matched is passed by reference:
 
@@ -144,7 +149,8 @@ start of $text.
 In the grammar from which the parser is built, rules are specified by
 giving an identifier (which must satisfy /[A-Za-z]w*/), followed by a
 colon I<on the same line>, followed by one or more productions,
-separated by single vertical bars. Rules are entirely free-format:
+separated by single vertical bars. The layout of the productions
+is entirely free-format:
 
 	rule1:	production1
 	     |  production2 |
@@ -598,6 +604,14 @@ rule currently being matched.
 A reference to the S<C<Parse::RecDescent::Production>> object
 corresponding to the production currently being matched.
 
+=item C<$score> and C<$score_return>
+
+$score stores the best production score to date, as specified by
+an earlier C<<score:...E<gt>> directive. $score_return stores
+the corresponding return value for the successful production.
+
+See L<Scored productions>.
+
 =back
 
 B<Warning:> the parser relies on the information in the various C<this...>
@@ -836,10 +850,12 @@ get the disaster you deserve :-).
 =head2 Directives
 
 Directives are special pre-defined actions which may be used to alter
-the behaviour of the parser. There are currently twelve directives:
+the behaviour of the parser. There are currently forteen directives:
 C<E<lt>commitE<gt>>,
 C<E<lt>uncommitE<gt>>,
 C<E<lt>rejectE<gt>>,
+C<E<lt>scoreE<gt>>,
+C<E<lt>autoscoreE<gt>>,
 C<E<lt>skipE<gt>>,
 C<E<lt>resyncE<gt>>,
 C<E<lt>errorE<gt>>,
@@ -1024,7 +1040,6 @@ error messages). A typical use might be:
 
 	command: save_command
 	       | restore_command
-	       | <error: Unknown command. Ignored.>
 	       | <resync> # TRY NEXT LINE, IF POSSIBLE
 
 It is also possible to explicitly specify a resynchronization
@@ -1036,7 +1051,6 @@ action). For example, if commands were terminated by newlines or semi-colons:
 
 	command: save_command
 	       | restore_command
-	       | <error: Unknown command. Ignored.>
 	       | <resync:[^;\n]*[;\n]>
 
 The value of a successfully matched C<E<lt>resyncE<gt>> directive (of either
@@ -1698,6 +1712,94 @@ it's necessary to add a C<(?)> qualifier to the directive:
 
 	list:	   '('  <leftop: list_item /(,|=>)/ list_item>(?)  ')' 
 
+=item Scored productions
+
+By default, Parse::RecDescent grammar rules always accept the first
+production that matches the input. But if two or more productions may 
+potentially match the same input, choosing the first that does so may
+not be optimal.
+
+For example, if you were parsing the sentence "time flies like an arrow",
+you might use a rule like this:
+
+	sentence: verb noun preposition article noun { [@item] }
+		| adjective noun verb article noun   { [@item] }
+		| noun verb preposition article noun { [@item] }
+
+Each of these productions matches the sentence, but the third one
+is the most likely interpretation. However, if the sentence had been
+"fruit flies like a banana", then the second production is probably
+the right match.
+
+To cater for such situtations, the C<<score:...E<gt>> can be used.
+The directive is equivalent to an unconditional C<<rejectE<gt>>,
+except that it allows you to specify a "score" for the current
+production. If that score is numerically greater than the best
+score of any preceding production, the current production is cached for later
+consideration. If no later production matches, then the cached
+production is treated as having matched, and the value of the
+item immediately before its C<<score:...E<gt>> directive is returned as the
+result.
+
+In other words, by putting a C<<score:...E<gt>> directive at the end of
+each production, you can select which production matches using
+criteria other than specification order. For example:
+
+	sentence: verb noun preposition article noun { [@item] } <score: sensible(@item)>
+		| adjective noun verb article noun   { [@item] } <score: sensible(@item)>
+		| noun verb preposition article noun { [@item] } <score: sensible(@item)>
+
+Now, when each production reaches its respective C<<score:...E<gt>> 
+directive, the subroutine C<sensible> will be called to evaluate the
+matched items (somehow). Once all productions have been tried, the
+one which C<sensible> scored most highly will be the one that is 
+accepted as a match for the rule.
+
+The variable $score always holds the current best score of any production,
+and the variable $score_return holds the corresponding return value.
+
+As another example, the following grammar matches lines that may be
+separated by commas, colons, or semi-colons. This can be tricky if
+a colon-separated line also contains commas, or vice versa. The grammar
+resolves the ambiguity by selecting the rule that results in the
+fewest fields:
+
+	line: seplist[sep=>',']  <score: -@{$item[1]}>
+	    | seplist[sep=>':']  <score: -@{$item[1]}>
+	    | seplist[sep=>" "]  <score: -@{$item[1]}>
+
+	seplist: <skip:""> <leftop: /[^$arg{sep}]*/ "$arg{sep}" /[^$arg{sep}]*/>
+
+Note the use of negation within the C<<score:...E<gt>> directive
+to ensure that the seplist with the most items gets the lowest score.
+
+As the above examples indicate, it is often the case that all productions
+in a rule use exactly the same C<<score:...E<gt>> directive. It is
+tedious to have to repeat this identical directive in every production, so
+Parse::RecDescent also provides the C<<autoscore:...E<gt>> directive. 
+
+If an C<<autoscore:...E<gt>> directive appears in any
+production of a rule, the code it specifies is used as the scoring
+code for every production of that rule, except productions that already
+end with an explicit C<<score:...E<gt>> directive. Thus the rules above could
+be rewritten:
+
+	line: <autoscore: -@{$item[1]}>
+	line: seplist[sep=>','] 
+	    | seplist[sep=>':']
+	    | seplist[sep=>" "]
+	
+
+	sentence: <autoscore: sensible(@item)>
+		| verb noun preposition article noun { [@item] }
+		| adjective noun verb article noun   { [@item] }
+		| noun verb preposition article noun { [@item] }
+
+Note that the C<<autoscore:...E<gt>> directive itself acts as an
+unconditional C<<rejectE<gt>>, and (like the C<<rulevar:...E<gt>>
+directive) is pruned at compile-time wherever possible.
+
+
 =back
 
 
@@ -1957,6 +2059,72 @@ be far more efficient:
 	type_name: /$thisparser->{local}{type_name}/
 
 
+=head2 Precompiling parsers
+
+Normally Parse::RecDescent builds a parser from a grammar at run-time.
+That approach simplifies the design and implementation of parsing code,
+but has the disadvantage that it slows the parsing process down - you
+have to wait for Parse::RecDescent to build the parser every time the
+program runs. Long or complex grammars can be particularly slow to
+build, leading to unacceptable delays at start-up.
+
+To overcome this, the module provides a way of "pre-building" a parser
+object and saving it in a separate module. That module can then be used
+to create clones of the original parser.
+
+A grammar may be precompiled using the C<Precompile> class method.
+For example, to precompile a grammar stored in the scalar $grammar,
+and produce a class (and module) named PreGrammar, you could use:
+
+	use Parse::RecDescent;
+
+	Parse::RecDescent->Precompile($grammar,
+				      "PreGrammar",
+				      "PreGrammar.pm");
+
+The first argument is the grammar string, the second is the name of the class
+to be built, and the third is the name of the file in which the class is
+to be generated. For example, if the module should be installed as
+Grammar::Example::Two you might write:
+
+	Parse::RecDescent->Precompile($grammar,
+				      "Grammar::Example::Two",
+				      "/lib/perl5/Grammar/Example/Two.pm");
+
+It is somewhat tedious to have to write a small Perl program just to 
+generate a precompiled grammar class, so Parse::RecDescent has some special
+magic that allows you to do the job directly from the command-line.
+
+If your grammar is specified in a file named F<grammar>, you can generate
+a module named Yet::Another::Grammar like so:
+
+	> perl -MParse::RecDescent - grammar Yet::Another::Grammar
+
+This would produce a file named F<Grammar.pm> containing the full
+definition of a class called Yet::Another::Grammar. Of course, to use
+that class, you would need to put the F<Grammar.pm> file in a
+directory named F<Yet/Another>, somewhere in your Perl include path.
+
+Having created the new class, it's very easy to use it to build
+a parser. You simply C<use> the new module, and then call it's
+C<new> method to create a parser object. For example:
+
+	use Yet::Another::Grammar;
+	my $parser = Yet::Another::Grammar->new();
+
+The effect of these two lines is exactly the same as:
+
+	use Parse::RecDescent;
+
+	open GRAMMAR_FILE, "grammar" or die;
+	local $/;
+	my $grammar = <GRAMMAR_FILE>;
+
+	my $parser = Parse::RecDescent->new($grammar);
+
+only considerably faster.
+
+
 =head2 A Metagrammar for C<Parse::RecDescent>
 
 The following is a specification of grammar format accepted by
@@ -2056,7 +2224,7 @@ subsequent failures in the C<line> rule are quietly ignored.
 
 Typically what's really needed is this:
 
-	file: line(s) eofile
+	file: line(s) eofile    { $return = $item[1] }
 
 	line: line_type_1
 	    | line_type_2
@@ -2073,6 +2241,26 @@ rule will fail, causing the entire C<file> rule to fail too.
 
 Note too that C<eofile> must match C</^\Z/> (end-of-text), I<not> 
 C</^\cZ/> or C</^\cD/> (end-of-file).
+
+And don't forget the action at the end of the production. If you just 
+write:
+
+	file: line(s) eofile    
+
+then the value returned by the C<file> rule will be the value of its
+last item: C<eofile>. Since C<eofile> always returns an empty string
+on success, that will cause the C<file> rule to return that empty
+string. Apart from returning the wrong value, returning an empty string
+will trip up code such as:
+
+	$parser->file($filetext) || die;
+
+(since "" is false). 
+
+Remember that Parse::RecDescent returns undef on failure,
+so the only safe test for failure is:
+
+	defined($parser->file($filetext)) || die;
 
 
 =head1 DIAGNOSTICS
