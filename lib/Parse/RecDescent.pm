@@ -82,23 +82,24 @@ sub STORE
 
 package Parse::RecDescent::OffsetCounter;
 
-sub TIESCALAR	# ($classname, \$text, $thisparser)
+sub TIESCALAR	# ($classname, \$text, $thisparser, $prev)
 {
 	bless {
 		text    => $_[1],
 		parser  => $_[2],
+		prev	=> $_[3]?-1:0,
 	      }, $_[0];
 }
 
 sub FETCH    
 {
 	my $parser = $_[0]->{parser};
-	return $parser->{fulltextlen}-length(${$_[0]->{text}});
+	return $parser->{fulltextlen}-length(${$_[0]->{text}})+$_[0]->{prev};
 }
 
 sub STORE
 {
-	die "Can't set current offset via \$thisoffset\n";
+	die "Can't set current offset via \$thisoffset or \$prevoffset\n";
 }
 
 
@@ -278,8 +279,9 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	my $expectation = new Parse::RecDescent::Expectation($thisrule->expected());
 	$expectation->at($_[1]);
 
-	my $thisoffset;
+	my ($thisoffset, $prevoffset);
 	tie $thisoffset, q{Parse::RecDescent::OffsetCounter}, \$text, $thisparser;
+	tie $prevoffset, q{Parse::RecDescent::OffsetCounter}, \$text, $thisparser, 1;
 	my ($thiscolumn, $prevcolumn);
 	tie $thiscolumn, q{Parse::RecDescent::ColCounter}, \$text, $thisparser;
 	tie $prevcolumn, q{Parse::RecDescent::ColCounter}, \$text, $thisparser, 1;
@@ -468,7 +470,7 @@ sub postitempos
 {
 	return q
 	{
-		$itempos[$#itempos]{'offset'}{'to'} = $thisoffset-1;
+		$itempos[$#itempos]{'offset'}{'to'} = $prevoffset;
 		$itempos[$#itempos]{'line'}{'to'}   = $prevline;
 		$itempos[$#itempos]{'column'}{'to'} = $prevcolumn;
 	}
@@ -515,7 +517,7 @@ sub code($$$$)
 
 	}
 
-	if ($parser->{_AUTOACTION} && !$item->isa("Parse::RecDescent::Action"))
+	if ($parser->{_AUTOACTION} && defined($item) && !$item->isa("Parse::RecDescent::Action"))
 	{
 		$code .= $parser->{_AUTOACTION}->code($namespace,$rule);
 		Parse::RecDescent::_warn(1,"Autogenerating action in rule
@@ -692,7 +694,7 @@ package Parse::RecDescent::Error;
 
 sub issubrule { undef }
 sub isterminal { 0 }
-sub describe { $_[1] ? '' : '<error...>' }
+sub describe { $_[1] ? '' : $_[0]->{commitonly} ? '<error?:...' : '<error...>' }
 
 sub new ($$$$$)
 {
@@ -733,7 +735,7 @@ sub code($$$$)
 	      new Parse::RecDescent::Directive('if (' .
 		($self->{"commitonly"} ? '$commit' : '1') . 
 		") { do {$action} unless ".' $_noactions; undef } else {0}',
-	        			$self->{"lookahead"},0,"<error...>"); 
+	        			$self->{"lookahead"},0,$self->describe); 
 	return $dir->code($namespace, $rule, 0);
 }
 
@@ -1228,7 +1230,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.61';
+$VERSION = '1.63';
 
 # BUILDING A PARSER
 
@@ -1392,7 +1394,7 @@ sub _generate($$$;$)
 			_parse("an implicit subrule", $aftererror, $line,
 				"( $code )");
 			my $implicit = $rule->nextimplicit;
-			$self->_generate("$implicit : $code",0,1);
+			$self->_generate("$implicit : $code",$replace,1);
 			$grammar = $implicit . $grammar;
 		}
 		elsif ($grammar =~ s/$UNCOMMITPROD//)
@@ -1945,7 +1947,25 @@ sub _check_grammar ($)
 sub _code($)
 {
 	my $self = shift;
-	my $code = "package $self->{namespace};\nuse strict;\nuse vars qw(\$skip);\n\$skip = '$skip'\n;$self->{startcode}";
+	my $code = qq{
+package $self->{namespace};
+use strict;
+use vars qw(\$skip \$AUTOLOAD);
+\$skip = '$skip';
+$self->{startcode}
+
+{
+local \$SIG{__WARN__} = sub {0};
+# PRETEND TO BE IN Parse::RecDescent NAMESPACE
+*$self->{namespace}::AUTOLOAD	= sub
+{
+	no strict 'refs';
+	\$AUTOLOAD =~ s/^$self->{namespace}/Parse::RecDescent/;
+	goto &{\$AUTOLOAD};
+}
+}
+
+};
 	$code .= "push \@$self->{namespace}\::ISA, 'Parse::RecDescent';";
 	$self->{"startcode"} = '';
 
@@ -2214,6 +2234,7 @@ package main;
 
 use vars qw ( $RD_ERRORS $RD_WARN $RD_HINT $RD_TRACE );
 $::RD_ERRORS = 1;
+$::RD_WARN = 3;
 
 1;
 

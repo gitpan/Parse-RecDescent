@@ -7,12 +7,17 @@ demo_bad.pl
 demo_cpp.pl
 demo_decomment.pl
 demo_derived.pl
+demo_errors.pl
 demo_implicit.pl
+demo_leftassoc.pl
+demo_lexer.pl
 demo_logic.pl
 demo_matchrule.pl
 demo_mccoy.pl
 demo_methods.pl
 demo_parsetree.pl
+demo_piecewise.pl
+demo_recipe.pl
 demo_selfmod.pl
 demo_simple.pl
 demo_template.pl

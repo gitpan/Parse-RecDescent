@@ -13,7 +13,7 @@ use vars qw/ $Grammar /;
 my $parser = new Parse::RecDescent $Grammar  or  die "invalid grammar";
 
 undef $/;
-my $text = <DATA>;
+my $text = @ARGV ? <> : <DATA>;
 
 $parser->program($text);
 
@@ -34,7 +34,7 @@ ptext   : m|[^"/]+|
         | m|/[^*/]|
 		{ print "$item[1]"; $WithinComment= 0; }
 
-string	: '"' s_char(s) '"'
+string	: '"' s_char(s?) '"'
 		{ print '"',@{$item[2]},'"'; }
 
 s_char	: /[^"\\]+/

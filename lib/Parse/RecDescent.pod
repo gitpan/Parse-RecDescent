@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.61 of Parse::RecDescent,
-released October 21, 1998.
+This document describes version 1.63 of Parse::RecDescent,
+released March 25, 1999.
 
 =head1 SYNOPSIS
 
@@ -32,7 +32,7 @@ released October 21, 1998.
 	 $parser->otherrule($text);
 
 
- # Change the universal token separator (prefix) pattern
+ # Change the universal token prefix pattern
  # (the default is: '\s*'):
 
 	$Parse::RecDescent::skip = '[ \t]+';
@@ -53,7 +53,7 @@ released October 21, 1998.
  # Global flags (useful as command line arguments under -s):
 
 	$::RD_ERRORS	   # unless undefined, report fatal errors
-	$::RD_WARN	   # if defined, also report non-fatal problems
+	$::RD_WARN	   # unless undefined, also report non-fatal problems
 	$::RD_HINT	   # if defined, also suggestion remedies
 	$::RD_TRACE	   # if defined, also trace parsers' behaviour
 	$::RD_AUTOSTUB	   # if defined, generates "stubs" for undefined rules
@@ -314,16 +314,16 @@ the following code is required:
 =head2 Terminal Separators
 
 For the purpose of matching, each terminal in a production is considered
-to be preceded by a "separator" - a pattern which must be
+to be preceded by a "prefix" - a pattern which must be
 matched before a token match is attempted. By default, the 
-separator is optional whitespace (which always matches, at least
-trivially), but this default may be reset in any production.
+prefix is optional whitespace (which always matches, at
+least trivially), but this default may be reset in any production.
 
 The variable C<$Parse::RecDescent::skip> stores the universal
-separator, which is the default for all terminal matches in all parsers
+prefix, which is the default for all terminal matches in all parsers
 built with C<Parse::RecDescent>.
 
-The separator for an individual production can be altered
+The prefix for an individual production can be altered
 by using the C<E<lt>skip:...E<gt>> directive (see below).
 
 
@@ -340,6 +340,25 @@ is defined (that is, if the implied C<do> statement evaluates to a
 defined value - I<even one which would be treated as "false">). Note
 that the value associated with a successful action is also the final
 value in the block.
+
+An action will I<fail> if it's last evaluated value is C<undef>. This is
+surprisingly easy to accomplish by accident. For instance, here's an
+infuriating case of an action that makes its production fail, but only
+when debugging I<isn't> activated:
+
+	description: name rank serial_number
+			{ print "Got $item[2] $item[1] ($item[3])\n"
+				if $::debugging
+			}
+
+If C<$debugging> is false, no statement in the block is executed, so
+the final value is C<undef>, and the entire production fails. The solution is:
+
+	description: name rank serial_number
+			{ print "Got $item[2] $item[1] ($item[3])\n"
+				if $::debugging;
+			  1;
+			}
 
 Within an action, a number of useful parse-time variables are
 available in the special parser namespace (there are other variables
@@ -399,7 +418,7 @@ below).
 
 =item C<$skip>
 
-The current terminal separator (see L<"Directives"> below).
+The current terminal prefix (see L<"Directives"> below).
 
 =item C<$text>
 
@@ -514,7 +533,7 @@ following:
 	$itempos[$n]{column}{to}	# VALUE OF $prevcolumn AFTER $item[$n]
 
 Note that the various C<$itempos[$n]...{from}> values record the
-appropriate value I<after> any token separator has been skipped.
+appropriate value I<after> any token prefix has been skipped.
 
 Hence, instead of the somewhat tedious and error-prone:
 
@@ -552,12 +571,7 @@ be a better choice.
 =item C<$thisparser>
 
 A reference to the S<C<Parse::RecDescent>> object through which
-parsing was initiated. Almost never used except to reset the default
-token separator for the entire parser. For example:
-
-	no_tabs: { $thisparser->{tokensep} = '[ \n]*' }
-		 rules
-		 { $thisparser->{tokensep} = undef }>>
+parsing was initiated. 
 
 The value of C<$thisparser> propagates down the subrules of a parse
 but not back up. Hence, you can invoke subrules from another parser
@@ -577,23 +591,12 @@ with the same names as the required subrules!
 =item C<$thisrule>
 
 A reference to the S<C<Parse::RecDescent::Rule>> object corresponding to the 
-rule currently being matched. Generally only used to (permanently)
-change the token separator for a rule. For example:
-
-	commasep: { $thisrule->{tokensep} = '\s*,\s*' } <reject>
-		| cmdcode /[A-Za-z]{20}/ /\d{5,10}/
-		| cmdcode /\d{10}/ /\d{5,10}/
-
-Note that a rule's token separator is only used before the explicit
-terminals in the rule (such as C<\d{10}> in the above example).
-Subrules (like "cmdcode") use their I<own> token separators.
+rule currently being matched.
 
 =item C<$thisprod>
 
 A reference to the S<C<Parse::RecDescent::Production>> object
-corresponding to the production currently being matched. Again, not
-generally used, except to change the token separator
-C<$thisprod-E<gt>{tokensep}> for a single production.
+corresponding to the production currently being matched.
 
 =back
 
@@ -945,19 +948,19 @@ C<E<lt>reject:1E<gt>>)
 
 =item Skipping between terminals
 
-The C<E<lt>skip<gt>> directive enables the terminal separator used in
+The C<E<lt>skip<gt>> directive enables the terminal prefix used in
 a production to be changed. For example:
 
 	OneLiner: Command <skip:'[ \t]*'> Arg(s) /;/
 
-causes only blanks and tabs to be skipped between terminals in the C<Arg>
+causes only blanks and tabs to be skipped before terminals in the C<Arg>
 subrule (and any of I<its> subrules>, and also before the final C</;/> terminal.
-Once the production is complete, the previous terminal separator is
+Once the production is complete, the previous terminal prefix is
 reinstated. Note that this implies that distinct productions of a rule
-must reset their terminal separators individually.
+must reset their terminal prefixes individually.
 
-The C<E<lt>skip<gt>> directive evaluates to the I<previous> terminal separator,
-so it's easy to reinstate a separator later in a production:
+The C<E<lt>skip<gt>> directive evaluates to the I<previous> terminal prefix,
+so it's easy to reinstate a prefix later in a production:
 
 	Command: <skip:","> CSV(s) <skip:$item[1]> Modifier
 
@@ -972,7 +975,7 @@ the following are equivalent (though their efficiency increases down the list):
 
 	<skip: qr/[:,]/>
 
-There is no way of directly setting the separator for
+There is no way of directly setting the prefix for
 an entire rule, except as follows:
 
 	Rule: <skip: '[ \t]*'> Prod1
@@ -990,7 +993,7 @@ or, better:
 
 
 B<Note: Up to release 1.51 of Parse::RecDescent, an entirely different
-mechanism was used for specifying terminal separators. The current method
+mechanism was used for specifying terminal prefixes. The current method
 is not backwards-compatible with that early approach. The current approach
 is stable and will not to change again.>
 
@@ -1094,7 +1097,7 @@ provide an explicit message as part of the error directive. For example:
 	     | "Highly illogical, doctor."
 	     | <error: He never said that!>
 
-which would result in all failures to parse a "Spock" subrule printing the
+which would result in I<all> failures to parse a "Spock" subrule printing the
 following message:
 
        ERROR (line <N>): Invalid Spock:  He never said that!
@@ -1151,10 +1154,17 @@ Error messages generated by the various C<E<lt>error...E<gt>> directives
 are only displayed once parsing ultimately fails. 
 C<E<lt>error...E<gt>> directives which cause one production of a rule
 to fail are automatically cancelled if another production subsequently
-causes the rule to succeed. This means that you can put 
+causes the entire rule to succeed. This means that you can put 
 C<E<lt>error...E<gt>> directives wherever useful diagnosis can be done,
 and only those associated with actual parser failure will ever be
 displayed.
+
+As a general rule, the most useful diagnostics are usually generated
+either at the very lowest level within the grammar, or at the very
+highest. A good rule of thumb is to identify those subrules which
+consist mainly (or entirely) of terminals, and then put an
+C<E<lt>error...E<gt>> directive at the end of any other rule which calls
+one or more of those subrules.
 
 There is one other situation in which the output of the various types of
 error directive is suppressed; namely, when the rule containing them
@@ -1192,21 +1202,27 @@ semantics, it is necessary to use:
 The level of reporting during both parser construction and parsing is
 controlled by the presence or absence of four global variables:
 C<$::RD_ERRORS>, C<$::RD_WARN>, C<$::RD_HINT>, and
-<$::RD_TRACE>. If C<$::RD_ERRORS> is defined (and by default, it is)
+<$::RD_TRACE>. If C<$::RD_ERRORS> is defined (and, by default, it is)
 then fatal errors are reported.
 
-Defining any of the remaining variables (which are not defined by
-default) cumulatively increases the amount of information reported.
-Defining C<$::RD_WARN> causes non-fatal errors to also be reported,
-whilst defining C<$::RD_HINT> causes the parser generator to offer
-more detailed analyses and hints on both errors and warnings.
-
+Whenever C<$::RD_WARN> is defined, certain non-fatal problems are also reported. 
 Warnings have an associated "level": 1, 2, or 3. The higher the level,
 the more serious the warning. The value of the corresponding global
 variable (C<$::RD_WARN>) determines the I<lowest> level of warning to
 be displayed. Hence, to see I<all> warnings, set C<$::RD_WARN> to 1.
 To see only the most serious warnings set C<$::RD_WARN> to 3.
-Note that setting C<$::RD_HINT> implicitly sets C<$::RD_WARN> to 1.
+By default C<$::RD_WARN> is initialized to 3, ensuring that serious but
+non-fatal errors are automatically reported.
+
+See F<"DIAGNOSTICS"> for a list of the varous error and warning messages
+that Parse::RecDescent generates when these two variables are defined.
+
+Defining any of the remaining variables (which are not defined by
+default) further increases the amount of information reported.
+Defining C<$::RD_HINT> causes the parser generator to offer
+more detailed analyses and hints on both errors and warnings.
+Note that setting C<$::RD_HINT> at any point automagically
+sets C<$::RD_WARN> to 1.
 
 Defining C<$::RD_TRACE> causes the parser generator and the parser to
 report their progress to STDERR in excruciating detail (although, without hints
@@ -1840,6 +1856,7 @@ C<Parse::RecDescent::new> (specified in the C<Parse::RecDescent> grammar format!
 
 Diagnostics are intended to be self-explanatory (particularly if you
 use B<-RD_HINT> (under B<perl -s>) or define C<$::RD_HINT> inside the program).
+
 C<Parse::RecDescent> currently diagnoses the following:
 
 =over 4
@@ -1876,6 +1893,12 @@ may be providing them later via C<Parse::RecDescent::Extend()>).
 
 =item *
 
+Instances where greedy repetition behaviour will almost certainly
+cause the failure of a production (a level 3 warning - see
+L<"ON-GOING ISSUES AND FUTURE DIRECTIONS"> below).
+
+=item *
+
 Attempts to define rules named 'Replace' or 'Extend', which cannot be
 called directly through the parser object because of the predefined
 meaning of C<Parse::RecDescent::Replace> and
@@ -1886,12 +1909,6 @@ such rules I<can> still be used as subrules).
 
 Multiple consecutive lookahead specifiers (a level 1 warning only, since their
 effects simply accumulate).
-
-=item *
-
-Instances where greedy repetition behaviour will almost certainly
-cause the failure of a production (a level 3 warning - see
-L<"ON-GOING ISSUES AND FUTURE DIRECTIONS"> below).
 
 =item *
 

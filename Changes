@@ -277,3 +277,25 @@ Revision history for Perl extension Parse::RecDescent.
 	  Now uses <skip:...> directive. See pod for new details.
 
 
+1.62	Wed Dec  9 11:26:29 1998
+
+	- Reinstated missing $prevoffset variable
+
+	- Corrected a possible bug with autoactions (thanks Mitchell)
+
+	- *** IMPORTANT CHANGE ***
+          $::RD_WARN now initialized 3 by default. Serious but
+          non-fatal errors are automatically reported, unless you
+          explicitly undefine $::RD_WARN.
+
+	- Fixed bug in AUTOLOADing non-method subs defined in
+	  package Parse::RecDescent (thanks Mario)
+
+
+1.63	Thu Mar 25 09:13:21 1999
+
+	- Rewrote documentation to replace the concept of a
+	  token separator with that of a token prefix. 
+
+	- Fixed obscure bug in replacement of rules containing
+	  implicit subrules (alternations). Thanks Craig.
