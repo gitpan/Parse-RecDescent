@@ -41,7 +41,9 @@ sub import	# IMPLEMENT PRECOMPILER BEHAVIOUR UNDER:
 sub Save
 {
 	my ($self, $class) = @_;
+	$self->{saving} = 1;
 	$self->Precompile(undef,$class);
+	$self->{saving} = 0;
 }
 
 sub Precompile
@@ -343,7 +345,7 @@ sub code
 {
 	my ($self, $namespace, $parser) = @_;
 
-eval 'undef &' . $namespace . '::' . $self->{"name"};
+eval 'undef &' . $namespace . '::' . $self->{"name"} unless $parser->{saving};
 
 	my $code =
 '
@@ -1683,7 +1685,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.79';
+$VERSION = '1.80';
 
 # BUILDING A PARSER
 
@@ -1760,7 +1762,7 @@ my $LITERAL		= q{\G\s*'((\\\\['\\\\]|[^'])*)'};
 my $INTERPLIT		= q{\G\s*"((\\\\["\\\\]|[^"])*)"};
 my $SUBRULE		= '\G\s*(\w+)';
 my $MATCHRULE		= '\G(\s*<matchrule:)';
-my $SIMPLEPAT		= '((\\s+\\/[^\\/\\\\]*(?:\\\\\\/[^\\/\\\\]*)*\\/)?)';
+my $SIMPLEPAT		= '((\\s+/[^/\\\\]*(?:\\\\.[^/\\\\]*)*/)?)';
 my $OPTIONAL		= '\G\((\?)'.$SIMPLEPAT.'\)';
 my $ANY			= '\G\((s\?)'.$SIMPLEPAT.'\)';
 my $MANY 		= '\G\((s|\.\.)'.$SIMPLEPAT.'\)';
@@ -2725,6 +2727,8 @@ sub AUTOLOAD	# ($parser, $text; $linenum, @args)
 	my $class = ref($_[0]) || $_[0];
 	my $text = ref($_[1]) ? ${$_[1]} : $_[1];
 	$_[0]->{lastlinenum} = $_[2]||_linecount($_[1]);
+	$_[0]->{lastlinenum} = _linecount($_[1]);
+	$_[0]->{lastlinenum} += $_[2] if @_ > 2;
 	$_[0]->{offsetlinenum} = $_[0]->{lastlinenum};
 	$_[0]->{fulltext} = $text;
 	$_[0]->{fulltextlen} = length $text;

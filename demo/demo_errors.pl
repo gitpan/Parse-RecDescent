@@ -8,6 +8,13 @@ $grammar =
 q{
 	Para:	  Sentence(s)
 
+	## Can also intercept the error messages like so: ##
+	#
+	#   |	{ use Data::Dumper 'Dumper';
+	#	  print Dumper $thisparser->{errors};
+	#         $thisparser->{errors} = undef;
+	#	} 
+
 	Sentence: Noun Verb 
 		| Verb Noun
 		| <error>

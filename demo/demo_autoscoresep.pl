@@ -3,6 +3,7 @@
 use Parse::RecDescent;
 
 $RD_WARN = undef;
+$RD_TRACE=1;
 
 my $parse = Parse::RecDescent->new(<<'EOGRAMMAR');
 

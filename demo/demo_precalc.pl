@@ -16,7 +16,8 @@ use Calc;
 
 sub evalop
 {
-	my (@list) = @{[@{$_[0]}]};
+	# my (@list) = @{[@{$_[0]}]};
+	my (@list) = @{$_[0]};
 	my $val = shift(@list)->();
 	while (@list)
 	{
@@ -29,7 +30,7 @@ sub evalop
 my $parse = Calc->new() or die "bad grammar";
 
 print "> ";
-while (<>) {	# FOR DEMO CHANGE TO: while (<DATA>)
+while (<DATA>) {	# FOR DEMO CHANGE TO: while (<DATA>)
   print $parse->main($_), "\n\n> ";
 }
 

@@ -416,3 +416,17 @@ Revision history for Perl extension Parse::RecDescent.
 	- Added trimmer for surrounding whitespace in matchrules.
 
 	- Squelched bug in (not) handling invalid directives (thanks John)
+
+
+1.80	Mon Sep  4 12:29:28 2000
+
+	- Fixed Save so that saved parsers can still be used after saving
+	  (thanks Supun)
+
+	- Fixed bug in line number tracking (thanks Theo)
+
+1.80	Sat Jan 20 05:02:35 2001
+
+	- Fixed bug in (s /pat/) shorthand (thanks Julien)
+
+	- Improved docs on <rulevar> (thanks Steve)

@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.79 of Parse::RecDescent,
-released August 21, 2000.
+This document describes version 1.80 of Parse::RecDescent,
+released January 20, 2001.
 
 =head1 SYNOPSIS
 
@@ -1485,6 +1485,14 @@ as expected:
 
         <rulevar: ($name,$age) = $arg{"name","age"} >
 
+If a variable that is also visible to subrules is required, it needs
+to be C<local>'d, not C<my>'d. C<rulevar> defaults to C<my>, but if C<local>
+is explicitly specified:
+
+        <rulevar: local $count = 0 >
+
+then a C<local>-ized variable is declared instead, and will be available
+within subrules.
 
 Note however that, because all such variables are "my" variables, their
 values I<do not persist> between match attempts on a given rule. To
