@@ -1332,7 +1332,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.42';
+$VERSION = '1.43';
 
 # BUILDING A PARSER
 

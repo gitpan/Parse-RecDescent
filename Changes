@@ -218,3 +218,8 @@ Revision history for Perl extension Parse::RecDescent.
 		     correctly
 
 	- Miscellaneous tweaks to RecDescent.pod (e.g. updated meta-grammar)
+
+
+1.43	Sat Aug 15 06:43:46 1998
+
+	- Resychronized Balanced.pm versions
