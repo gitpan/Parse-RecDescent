@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.92 of Parse::RecDescent
+                 Release of version 1.93 of Parse::RecDescent
 ==============================================================================
 
 
@@ -81,10 +81,10 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.92
+CHANGES IN VERSION 1.93
 
 
-	- Removed Text::Balanced from distribution (now a prereq only)
+	- Fixed fatal error with $tracelevel (thanks everyone)
 
 
 ==============================================================================

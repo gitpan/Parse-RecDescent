@@ -1721,7 +1721,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.92';
+$VERSION = '1.93';
 
 # BUILDING A PARSER
 
@@ -2860,7 +2860,7 @@ $| = 1;
 my $tracemsg;
 my $tracecontext;
 my $tracerulename;
-my $tracelevel;
+our $tracelevel;
 
 open (TRACE, ">&STDERR");
 format TRACE =
