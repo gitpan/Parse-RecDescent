@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.70 of Parse::RecDescent,
-released October  8, 1999.
+This document describes version 1.77 of Parse::RecDescent,
+released November 22, 1999.
 
 =head1 SYNOPSIS
 
@@ -103,6 +103,15 @@ argument lists, "up" via subrule return values)
 
 Incremental extension of the parsing grammar (even during a parse),
 
+=item *
+
+Precompilation of parser objects,
+
+=item *
+
+User-definable reduce-reduce conflict resolution via
+"scoring" of matching productions.
+
 =back
 
 =head2 Using C<Parse::RecDescent>
@@ -147,7 +156,7 @@ start of $text.
 =head2 Rules
 
 In the grammar from which the parser is built, rules are specified by
-giving an identifier (which must satisfy /[A-Za-z]w*/), followed by a
+giving an identifier (which must satisfy /[A-Za-z]\w*/), followed by a
 colon I<on the same line>, followed by one or more productions,
 separated by single vertical bars. The layout of the productions
 is entirely free-format:
@@ -278,15 +287,17 @@ Note that, since each rule is implemented inside a special namespace
 belonging to its parser, it is necessary to explicitly quantify
 variables from the main package.
 
-Regex tokens can be specified using just backslashes as delimiters
+Regex tokens can be specified using just slashes as delimiters
 or with the explicit C<mE<lt>delimiterE<gt>......E<lt>delimiterE<gt>> syntax:
 
 		typedef: "typedef" typename identifier ';'
 
+		typename: /[A-Za-z_][A-Za-z0-9_]*/
+
 		identifier: m{[A-Za-z_][A-Za-z0-9_]*}
 
 A regex of either type can also have any valid trailing parameter(s)
-(that is, any of [gimsox]):
+(that is, any of [cgimsox]):
 
 		typedef: "typedef" typename identifier ';'
 
@@ -347,7 +358,7 @@ defined value - I<even one which would be treated as "false">). Note
 that the value associated with a successful action is also the final
 value in the block.
 
-An action will I<fail> if it's last evaluated value is C<undef>. This is
+An action will I<fail> if its last evaluated value is C<undef>. This is
 surprisingly easy to accomplish by accident. For instance, here's an
 infuriating case of an action that makes its production fail, but only
 when debugging I<isn't> activated:
@@ -375,7 +386,7 @@ things should be okay):
 
 =over 4
 
-=item C<@item>
+=item C<@item> and C<%item>
 
 The array slice C<@item[1..$#item]> stores the value associated with each item
 (that is, each subrule, token, or action) in the current production. The
@@ -390,9 +401,62 @@ C<@item> is a standard Perl array, so it can also be indexed with negative
 numbers, representing the number of items I<back> from the current position in
 the parse:
 
-		stuff: /various/ bits 'and' pieces "then" data 'end'
-				{ print @item[-2] }  # PRINTS data
-						     # (EASIER THAN: @item[6])
+	stuff: /various/ bits 'and' pieces "then" data 'end'
+			{ print $item[-2] }  # PRINTS data
+					     # (EASIER THAN: $item[6])
+
+The C<%item> hash complements the <@item> array, providing named
+access to the same item values:
+
+	stuff: /various/ bits 'and' pieces "then" data 'end'
+			{ print $item{data}  # PRINTS data
+					     # (EVEN EASIER THAN USING @item)
+
+
+The results of named subrules are stored in the hash under each subrule's name,
+whilst all other items are stored under a key that is their ordinal position:
+
+	stuff: /various/ bits 'and' pieces "then" data 'end'
+			{ print $item{1}        # PRINTS various
+					        # (SIMILAR TO USING @item)
+
+If you want I<named> access to patterns or literals, you need to turn 
+them into separate rules: 
+
+	stuff: various bits 'and' pieces "then" data 'end'
+			{ print $item{various}  # PRINTS various
+					        # (EVEN EASIER THAN USING @item)
+
+	various: /various/
+
+
+The special entry C<$item{__RULE__}> stores the name of the current
+rule (i.e. the same value as C<$item[0]>.
+
+The advantage of using C<%item>, instead of C<@items> is that it
+removes the need to track items positions that may change as a grammar
+evolves. For example, adding an interim C<E<lt>skipE<gt>> directive
+of action can silently ruin a trailing action, by moving an C<@item>
+element "down" the array one place. In contrast, the named entry 
+of C<%item> is unaffected by such an insertion.
+
+A limitation of the C<%item> hash is that it only records the I<last>
+value of a particular subrule. For example:
+
+	range: '(' number '..' number )'
+			{ $return = $item{number} }
+
+wil return only the value corresponding to the I<second> match of the
+C<number> subrule. In other words, successive calls to a subrule
+overwrite the corresponding entry in C<%item>. Once again, the
+solution is to rename each subrule in its own rule:
+
+	range: '(' from_num '..' to_num )'
+			{ $return = $item{from_num} }
+
+	from_num: number
+	to_num:   number
+
 
 
 =item C<@arg> and C<%arg>
@@ -756,6 +820,75 @@ A level 1 warning is issued each time an "autoaction" is added to
 some production.
 
 
+=head2 Autotrees
+
+A commonly needed autoaction is one that builds a parse-tree. It is moderately
+tricky to set up such an action (which must treat terminals differently from
+non-terminals), so Parse::RecDescent simplifies the process by providing the
+E<lt>autotreeE<gt> directive.
+
+If this directive appears at the start of grammar, it causes
+Parse::RecDescent to insert autoactions at the end of any rule except
+those which already end in an action, or those which consist of a
+single terminal (i.e. a single pattern or string item).
+
+So, for example, the following grammar:
+
+	<autotree>
+
+	file    : command(s)
+	command : get | set | vet
+	get     : 'get' ident ';'
+	set     : 'set' ident 'to' value ';'
+	vet     : 'check' ident 'is' value ';'
+	ident   : /\w+/
+	value   : /\d+/
+
+is equivalent to:
+
+	file    : command(s)			{ bless \%item, $item[0] }
+	command : get				{ bless \%item, $item[0] }
+		| set				{ bless \%item, $item[0] }
+		| vet				{ bless \%item, $item[0] }
+	get     : 'get' ident ';'		{ bless \%item, $item[0] }
+	set     : 'set' ident 'to' value ';'	{ bless \%item, $item[0] }
+	vet     : 'check' ident 'is' value ';'	{ bless \%item, $item[0] }
+
+	ident   : /\w+/		 { bless {__VALUE__=>$item[1]}, $item[0] }
+	value   : /\d+/		 { bless {__VALUE__=>$item[1]}, $item[0] }
+
+Note that each node in the tree is blessed into a class of the
+same name as the rule itself. This makes it easy to build object-oriented
+processors for the parse-trees that the grammar produces. Note too that
+the last two rules produce special objects with the single attribute '__VALUE__'.
+This is because they consist solely of a single terminal.
+
+This autoaction-ed grammar would then produce a parse tree in a data
+structure like this:
+
+	{
+          file => {
+                    command => {
+				 [ get => {
+					    identifier => { __VALUE__ => 'a' },
+					  },
+		                   set => {
+					    identifier => { __VALUE__ => 'b' },
+                                            value      => { __VALUE__ => '7' },
+					  },
+		                   vet => {
+					    identifier => { __VALUE__ => 'b' },
+					    value      => { __VALUE__ => '7' },
+					  },
+		                  ],
+		               },
+	          }
+	}
+
+(except, of course, that each nested hash would also be blessed into
+the appropriate class).
+
+
 =head2 Autostubbing
 
 Normally, if a subrule appears in some production, but no rule of that
@@ -850,7 +983,7 @@ get the disaster you deserve :-).
 =head2 Directives
 
 Directives are special pre-defined actions which may be used to alter
-the behaviour of the parser. There are currently forteen directives:
+the behaviour of the parser. There are currently eighteen directives:
 C<E<lt>commitE<gt>>,
 C<E<lt>uncommitE<gt>>,
 C<E<lt>rejectE<gt>>,
@@ -864,6 +997,10 @@ C<E<lt>matchruleE<gt>>,
 C<E<lt>leftopE<gt>>,
 C<E<lt>rightopE<gt>>,
 C<E<lt>deferE<gt>>,
+C<E<lt>nocheck<gt>>,
+C<E<lt>perl_quotelike<gt>>,
+C<E<lt>perl_codeblock<gt>>,
+C<E<lt>perl_variable<gt>>,
 and C<E<lt>tokenE<gt>>.
 
 =over 4
@@ -1505,6 +1642,81 @@ a C<E<lt>defer:...E<gt>> directive always succeeds, returning the
 number of deferred actions currently queued at that point.
 
 
+=item Parsing Perl
+
+Parse::RecDescent provides limited support for parsing subsets of Perl,
+namely: quote-like operators, Perl variables, and complete code blocks.
+
+The C<E<lt>perl_quotelikeE<gt>> directive can be used to parse any Perl
+quote-like operator: C<'a string'>, C<m/a pattern/>, C<tr{ans}{lation}>,
+etc.  It does this by calling Text::Balanced::quotelike().
+
+If a quote-like operator is found, a reference to an array of eight elements
+is returned. Those elements are identical to the last eight elements returned
+by Text::Balanced::extract_quotelike() in an array context, namely:
+
+=over 4
+
+=item [0]
+
+the name of the quotelike operator -- 'q', 'qq', 'm', 's', 'tr' -- if the
+operator was named; otherwise C<undef>,
+
+=item [1]
+
+the left delimiter of the first block of the operation,
+
+=item [2]
+
+the text of the first block of the operation
+(that is, the contents of
+a quote, the regex of a match, or substitution or the target list of a
+translation),
+
+=item [3]
+
+the right delimiter of the first block of the operation,
+
+=item [4]
+
+the left delimiter of the second block of the operation if there is one
+(that is, if it is a C<s>, C<tr>, or C<y>); otherwise C<undef>,
+
+=item [5]
+
+the text of the second block of the operation if there is one
+(that is, the replacement of a substitution or the translation list
+of a translation); otherwise C<undef>,
+
+=item [6]
+
+the right delimiter of the second block of the operation (if any);
+otherwise C<undef>,
+
+=item [7]
+
+the trailing modifiers on the operation (if any); otherwise C<undef>.
+
+=back
+
+If a quote-like expression is not found, the directive fails with the usual
+C<undef> value.
+
+The C<E<lt>perl_variable<gt>> directive can be used to parse any Perl
+variable: $scalar, @array, %hash, $ref->{field}[$index], etc.
+It does this by calling Text::Balanced::extract_variable().
+
+If the directive matches text representing a valid Perl variable
+specification, it returns that text. Otherwise it fails with the usual
+C<undef> value.
+
+The C<E<lt>perl_codeblock<gt>> directive can be used to parse curly-brace-delimited block of Perl code, such as: { $a = 1; f() =~ m/pat/; }.
+It does this by calling Text::Balanced::extract_codeblock().
+
+If the directive matches text representing a valid Perl code block,
+it returns that text. Otherwise it fails with the usual C<undef> value.
+
+
 =item Constructing tokens
 
 Eventually, Parse::RecDescent will be able to parse tokenized input, as
@@ -1668,7 +1880,7 @@ C<<leftop:...E<gt>> and C<<rightop:...E<gt>> directives
 I<do> return the operator(s) as well, under two circumstances.
 The first case is where the operator is specified as a subrule. In that instance,
 whatever the operator matches is returned (on the assumption that if the operator
-is important enough to have it's own subrule, then it's important enough to return).
+is important enough to have its own subrule, then it's important enough to return).
 
 The second case is where the operator is specified as a regular
 expression. In that case, if the first bracketed subpattern of the
@@ -1799,6 +2011,26 @@ Note that the C<<autoscore:...E<gt>> directive itself acts as an
 unconditional C<<rejectE<gt>>, and (like the C<<rulevar:...E<gt>>
 directive) is pruned at compile-time wherever possible.
 
+
+=item Dispensing with grammar checks
+
+During the compilation phase of parser construction, Parse::RecDescent performs
+a small number of checks on the grammar it's given. Specifically it checks that
+the grammar is not left-recursive, that there are no "insatiable" constructs of
+the form:
+
+	rule: subrule(s) subrule
+
+and that there are no rules missing (i.e. referred to, but never defined).
+
+These checks are important during development, but can slow down parser
+construction in stable code. So Parse::RecDescent provides the
+E<lt>nocheckE<gt> directive to turn them off. The directive can only appear
+before the first rule definition, and switches off checking throughout the rest
+of the current grammar.
+
+Typically, this directive would be added when a parser has been thoroughly
+tested and is ready for release.
 
 =back
 
@@ -2106,7 +2338,7 @@ that class, you would need to put the F<Grammar.pm> file in a
 directory named F<Yet/Another>, somewhere in your Perl include path.
 
 Having created the new class, it's very easy to use it to build
-a parser. You simply C<use> the new module, and then call it's
+a parser. You simply C<use> the new module, and then call its
 C<new> method to create a parser object. For example:
 
 	use Yet::Another::Grammar;
@@ -2123,6 +2355,11 @@ The effect of these two lines is exactly the same as:
 	my $parser = Parse::RecDescent->new($grammar);
 
 only considerably faster.
+
+Note however that the parsers produced by either approach are exactly
+the same, so whilst precompilation has an effect on E<set-up> speed,
+it has no effect on E<parsing> speed. RecDescent 2.0 will address that
+problem.
 
 
 =head2 A Metagrammar for C<Parse::RecDescent>
@@ -2345,7 +2582,7 @@ Rules which are autogenerated under C<$::AUTOSTUB> (a level 1 warning).
 
 =head1 AUTHOR
 
-Damian Conway (damian@cs.monash.edu.au)
+Damian Conway (damian@conway.org)
 
 =head1 BUGS AND IRRITATIONS
 
@@ -2482,7 +2719,7 @@ effort of building an automated solution?
 
 =head1 COPYRIGHT
 
-Copyright (c) 1997-1998, Damian Conway. All Rights Reserved.
+Copyright (c) 1997-2000, Damian Conway. All Rights Reserved.
 This module is free software. It may be used, redistributed
 and/or modified under the terms of the Perl Artistic License
   (see http://www.perl.com/perl/misc/Artistic.html)

@@ -5,7 +5,12 @@ use Parse::RecDescent;
 
 Parse::RecDescent->Precompile(<<'EndGrammar', "Calc", $0 );
 
-	main: expr /\s*\Z/ { $item[1]->() }
+	{ my $lexical_var = 1; }
+
+	mult_op: '*'	{ sub { $_[0] *= $_[1] } }
+	       | '/'	{ sub { $_[0] /= $_[1] } }
+
+	main: expr /\s*\Z/ { $lexical_var++ } { $item[1]->() }
 	    | <error>
 
 	expr: /for(each)?/ lvar range expr
@@ -36,9 +41,6 @@ Parse::RecDescent->Precompile(<<'EndGrammar', "Calc", $0 );
 	multiplication: <leftop:factor mult_op factor>
 			{ my $mult = $item[1]; sub { ::evalop($mult) } }
   
-	mult_op: '*'	{ sub { $_[0] *= $_[1] } }
-	       | '/'	{ sub { $_[0] /= $_[1] } }
-
 	factor: number
 	      | rvar
 	      | '(' expr ')' { $item[2] }

@@ -348,3 +348,26 @@ Revision history for Perl extension Parse::RecDescent.
 
 	- Added <score> and <autoscore> directives (see documentation)
 
+
+
+1.77	Mon Nov 22 06:11:32 1999
+
+	- IMPORTANT: Now requires 5.005 or better.
+
+	- Added <perl_quotelike>, <perl_codeblock>, and <perl_variable>
+	  directives (see documentation)
+
+	- Added <autotree> directive (see documentation)
+
+	- Added %item hash (see documentation - thanks Stef!)
+
+	- Tweaked internal parser in line with changes to Text::Balanced
+
+	- Added <nocheck> directive to switch off recursion checking and
+	  other checks in stable grammars (see documentation).
+
+	- Refined code generation WRT positional variables ($thisoffset, etc)
+
+	- Added positional entries for %item (see documentation)
+
+	- Fixed bug with (missing) start actions under precompiler (thanks Theo)

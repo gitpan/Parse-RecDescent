@@ -1,8 +1,7 @@
 ==============================================================================
-                 Release of version 1.70 of Parse::RecDescent
+                 Release of version 1.77 of Parse::RecDescent
 ==============================================================================
 
-DESCRIPTION
 
 NAME
 
@@ -31,6 +30,11 @@ DESCRIPTION
 
         * Incremental extension of the parsing grammar (even during a parse),
 
+	* Precompilation of parser objects,
+
+	* User-definable reduce-reduce conflict resolution via
+	  "scoring" of matching productions.
+
     See the file "RecDescent.pod" for excruciating detail on all of this.
 
 
@@ -58,18 +62,18 @@ CHANGES AND FUTURE DEVELOPMENT
     This readme refers to versions 1.XX.
     For details of changes, refer to the file Changes.
 
-    Version 2.00 will provide an optional parser compiler to generate
-    separate parsing modules with no construction run-time overhead.
+    Version 2.00 will provide a cleaner interface and better
+    parsing performance.
 
 
 AUTHOR
 
-    Damian Conway (damian@cs.monash.edu.au)
+    Damian Conway (damian@csse.monash.edu.au)
 
 
 COPYRIGHT
 
-     Copyright (c) 1997-1998, Damian Conway. All Rights Reserved.
+     Copyright (c) 1997-2000, Damian Conway. All Rights Reserved.
      This module is free software. It may be used, redistributed
      and/or modified under the terms of the Perl Artistic License
           (see http://www.perl.com/perl/misc/Artistic.html)
@@ -77,24 +81,28 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.70
+CHANGES IN VERSION 1.77
 
 
-	- Clarified use of "eofile" idiom in POD file
-	  Clarified meaning of "free-form" in description of grammars
-	  Fixed <resync> examples, which were invalidated by 
-	  earlier change in semantics of <error>. (Thanks Knut).
+	- IMPORTANT: Now requires 5.005 or better.
 
-	- Added grammar precompiler (see documentation)
+	- Added <perl_quotelike>, <perl_codeblock>, and <perl_variable>
+	  directives (see documentation)
 
-	- Tweaked message for <reject> optimization.
+	- Added <autotree> directive (see documentation)
 
-	- Fixed bug when using '@' as a terminal (thanks Abigail)
+	- Added %item hash (see documentation - thanks Stef!)
 
-	- Fixed nasty bug when $return set to zero
+	- Tweaked internal parser in line with changes to Text::Balanced
 
-	- Added <score> and <autoscore> directives (see documentation)
+	- Added <nocheck> directive to switch off recursion checking and
+	  other checks in stable grammars (see documentation).
 
+	- Refined code generation WRT positional variables ($thisoffset, etc)
+
+	- Added positional entries for %item (see documentation)
+
+	- Fixed bug with (missing) start actions under precompiler (thanks Theo)
 
 
 ==============================================================================
