@@ -309,5 +309,10 @@ Revision history for Perl extension Parse::RecDescent.
 	  in literal tokens. Thanks Matthew.
 
 
-1.64	Sun Mar 28 06:02:40 1999
 
+1.65	Wed May 19 12:35:05 1999
+
+	- Added <leftop:...> and <rightop:...> directives
+
+	- Added level 2 warning and autoreject for lone <error?>
+	  directive in a production.

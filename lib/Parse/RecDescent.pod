@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.64 of Parse::RecDescent,
-released March 28, 1999.
+This document describes version 1.65 of Parse::RecDescent,
+released May 19, 1999.
 
 =head1 SYNOPSIS
 
@@ -363,7 +363,7 @@ the final value is C<undef>, and the entire production fails. The solution is:
 Within an action, a number of useful parse-time variables are
 available in the special parser namespace (there are other variables
 also accessible, but meddling with them will probably just break your
-parser. As a general rule, if you avoid referring to unquantified
+parser. As a general rule, if you avoid referring to unqualified
 variables - especially those starting with an underscore - inside an action,
 things should be okay):
 
@@ -611,7 +611,7 @@ that the use of C<$this...-E<gt>{local}> is always safe.
 
 Any actions which appear I<before> the first rule definition in a
 grammar are treated as "start-up" actions. Each such action is
-stripped of its outermost blackets and than evaluated (in the parser's
+stripped of its outermost brackets and then evaluated (in the parser's
 special namespace) just before the rules of the grammar are first
 compiled.
 
@@ -687,7 +687,7 @@ Alternatively, we could take an object-oriented approach, use different
 classes for each node (and also eliminating redundant intermediate nodes):
 
     $::RD_AUTOACTION = q
-      { $#item==1 ? $item[1] : new ${\"$item[0]_node"} (@item[1..$#item]) };
+      { $#item==1 ? $item[1] : new ${"$item[0]_node"} (@item[1..$#item]) };
 
     parser = new Parse::RecDescent (q{
 	expression: and_expr '||' expression | and_expr
@@ -724,7 +724,7 @@ Note that, if a production already ends in an action, no autoaction is appended
 to it. For example, in this version:
 
     $::RD_AUTOACTION = q
-      { $#item==1 ? $item[1] : new ${\"$item[0]_node"} (@item[1..$#item]) };
+      { $#item==1 ? $item[1] : new ${"$item[0]_node"} (@item[1..$#item]) };
 
     parser = new Parse::RecDescent (q{
 	expression: and_expr '&&' expression | and_expr
@@ -836,11 +836,19 @@ get the disaster you deserve :-).
 =head2 Directives
 
 Directives are special pre-defined actions which may be used to alter
-the behaviour of the parser. There are currently ten directives:
-C<E<lt>commitE<gt>>, C<E<lt>uncommitE<gt>>, C<E<lt>rejectE<gt>>,
+the behaviour of the parser. There are currently twelve directives:
+C<E<lt>commitE<gt>>,
+C<E<lt>uncommitE<gt>>,
+C<E<lt>rejectE<gt>>,
 C<E<lt>skipE<gt>>,
-C<E<lt>resyncE<gt>>, C<E<lt>errorE<gt>>, C<E<lt>rulevarE<gt>>,
-C<E<lt>matchruleE<gt>>, C<E<lt>defer<gt>>, and C<E<lt>tokenE<gt>>.
+C<E<lt>resyncE<gt>>,
+C<E<lt>errorE<gt>>,
+C<E<lt>rulevarE<gt>>,
+C<E<lt>matchruleE<gt>>,
+C<E<lt>leftopE<gt>>,
+C<E<lt>rightopE<gt>>,
+C<E<lt>deferE<gt>>,
+and C<E<lt>tokenE<gt>>.
 
 =over 4
 
@@ -948,7 +956,7 @@ C<E<lt>reject:1E<gt>>)
 
 =item Skipping between terminals
 
-The C<E<lt>skip<gt>> directive enables the terminal prefix used in
+The C<E<lt>skipE<gt>> directive enables the terminal prefix used in
 a production to be changed. For example:
 
 	OneLiner: Command <skip:'[ \t]*'> Arg(s) /;/
@@ -959,7 +967,7 @@ Once the production is complete, the previous terminal prefix is
 reinstated. Note that this implies that distinct productions of a rule
 must reset their terminal prefixes individually.
 
-The C<E<lt>skip<gt>> directive evaluates to the I<previous> terminal prefix,
+The C<E<lt>skipE<gt>> directive evaluates to the I<previous> terminal prefix,
 so it's easy to reinstate a prefix later in a production:
 
 	Command: <skip:","> CSV(s) <skip:$item[1]> Modifier
@@ -1044,12 +1052,12 @@ only an C<undef> denotes failure within C<Parse::RecDescent> parsers.
 
 The C<E<lt>errorE<gt>> directive provides automatic or user-defined
 generation of error messages during a parse. In its simplest form
-C<E<lt>errorE<gt>> unconditionally generates an error message based on
+C<E<lt>errorE<gt>> prepares an error message based on
 the mismatch between the last item expected and the text which cause
 it to fail. For example, given the rule:
 
 	McCoy: curse ',' name ', I'm a doctor, not a' a_profession '!'
-	     | possessive 'dead,' name '!'
+	     | pronoun 'dead,' name '!'
 	     | <error>
 
 the following strings would produce the following messages:
@@ -1058,7 +1066,7 @@ the following strings would produce the following messages:
 
 =item "Amen, Jim!"
 
-       ERROR (line 1): Invalid McCoy: Expected curse or possessive
+       ERROR (line 1): Invalid McCoy: Expected curse or pronoun
 		       not found
 
 =item "Dammit, Jim, I'm a doctor!"
@@ -1123,8 +1131,8 @@ encountered. For example:
 will only generate an error for a string beginning with "Ya kenna
 change the Laws o' Phusics," or a valid name, but which still fails to match the
 corresponding production. That is, C<$parser-E<gt>Scotty("Aye, Cap'ain")> will
-fail silently (since neither production will "commit "the rule on that
-input), whereas S<C<$parser-E<gt>Scotty("Mr Spock, ah jest kenna do'ut!")E<gt>>>
+fail silently (since neither production will "commit" the rule on that
+input), whereas S<C<$parser-E<gt>Scotty("Mr Spock, ah jest kenna do'ut!")>>
 will fail with the error message:
 
        ERROR (line 1): Invalid Scotty: expected 'she's goanta blaw!'
@@ -1151,10 +1159,12 @@ C<E<lt>errorE<gt>>. For example:
 
 
 Error messages generated by the various C<E<lt>error...E<gt>> directives
-are only displayed once parsing ultimately fails. 
-C<E<lt>error...E<gt>> directives which cause one production of a rule
-to fail are automatically cancelled if another production subsequently
-causes the entire rule to succeed. This means that you can put 
+are not displayed immediately. Instead, they are "queued" in a buffer and
+are only displayed once parsing ultimately fails. Moreover,
+C<E<lt>error...E<gt>> directives that cause one production of a rule
+to fail are automatically removed from the message queue
+if another production subsequently causes the entire rule to succeed.
+This means that you can put 
 C<E<lt>error...E<gt>> directives wherever useful diagnosis can be done,
 and only those associated with actual parser failure will ever be
 displayed.
@@ -1182,7 +1192,7 @@ C<E<lt>errorE<gt>> directive).
 An C<E<lt>error?E<gt>> directive will I<succeed> (that is: fail to fail :-), if
 the current rule is uncommitted when the directive is encountered. In
 that case the directive's associated value is zero. Hence, this type
-of error directive I<can> usefully be used before the end of a
+of error directive I<can> be used before the end of a
 production. For example:
 
 	command: 'do' <commit> something
@@ -1198,10 +1208,21 @@ semantics, it is necessary to use:
 	rule: item <commit> item(s)
 	    | <error?> <reject>	     # FAIL SILENTLY UNLESS COMMITTED
 
+However, because people seem to expect a lone C<E<lt>error?E<gt>> directive
+to work like this:
 
-The level of reporting during both parser construction and parsing is
-controlled by the presence or absence of four global variables:
-C<$::RD_ERRORS>, C<$::RD_WARN>, C<$::RD_HINT>, and
+	rule: item <commit> item(s)
+	    | <error?: Error message if committed>
+	    | <error:  Error message if uncommitted>
+
+Parse::RecDescent automatically appends a 
+C<E<lt>rejectE<gt>> directive if the C<E<lt>error?E<gt>> directive
+is the only item in a production. A level 2 warning (see below)
+is issued when this happens.
+
+The level of error reporting during both parser construction and
+parsing is controlled by the presence or absence of four global
+variables: C<$::RD_ERRORS>, C<$::RD_WARN>, C<$::RD_HINT>, and
 <$::RD_TRACE>. If C<$::RD_ERRORS> is defined (and, by default, it is)
 then fatal errors are reported.
 
@@ -1406,7 +1427,7 @@ For example, given the grammar:
 			{ print "$item[1]\t(intransitive)\n" }
 	       |  'barked'
 			{ print "$item[1]\t(intransitive)\n" }
-	
+
 then parsing the sentence C<"the dog ate"> would produce the output:
 
 	the dog	 (noun)
@@ -1521,13 +1542,169 @@ or with a lex-on-demand approach:
 But at present, only the C<E<lt>token:...E<gt>> directive is
 actually implemented. The rest is vapourware.
 
+=item Specifying operations
+
+One of the commonest requirements when building a parser is to specify
+binary operators. Unfortunately, in a normal grammar, the rules for
+such things are awkward:
+
+	disjunction:	conjunction ('or' conjunction)(s?)
+				{ $return = [ $item[1], @{$item[2]} ] }
+
+	conjunction:	atom ('and' atom)(s?)
+				{ $return = [ $item[1], @{$item[2]} ] }
+
+or inefficient:
+
+	disjunction:	conjunction 'or' disjunction
+				{ $return = [ $item[1], @{$item[2]} ] }
+		   |	conjunction
+				{ $return = [ $item[1] ] }
+
+	conjunction:	atom 'and' conjunction
+				{ $return = [ $item[1], @{$item[2]} ] }
+		   |	atom
+				{ $return = [ $item[1] ] }
+
+and either way is ugly and hard to get right.	
+
+The C<<leftop:...E<gt>> and C<<rightop:...E<gt>> directives provide an
+easier way of specifying such operations. Using C<<leftop:...E<gt>> the
+above examples become:
+
+	disjunction:	<leftop: conjunction 'or' conjunction>
+	conjunction:	<leftop: atom 'and' atom>
+
+The C<<leftop:...E<gt>> directive specifies a left-associative binary operator.
+It is specified around three other grammar elements
+(typically subrules or terminals), which match the left operand,
+the operator itself, and the right operand respectively.
+
+A C<<leftop:...E<gt>> directive such as:
+
+	disjunction:	<leftop: conjunction 'or' conjunction>
+
+is converted to the following:
+
+	disjunction:	( conjunction ('or' conjunction)(s?)
+				{ $return = [ $item[1], @{$item[2]} ] } )
+
+In other words, a C<<leftop:...E<gt>> directive matches the left operand followed by zero
+or more repetitions of both the operator and the right operand. It then
+flattens the matched items into an anonymous array which becomes the
+(single) value of the entire C<<leftop:...E<gt>> directive.
+
+For example, an C<<leftop:...E<gt>> directive such as:
+
+	output:  <leftop: ident '<<' expr >
+
+when given a string such as:
+
+	cout << var << "str" << 3
+
+would match, and C<$item[1]> would be set to:
+
+	[ 'cout', 'var', '"str"', '3' ]
+
+In other words:
+
+	output:  <leftop: ident '<<' expr >
+
+is equivalent to a left-associative operator:
+
+	output:	 ident					{ $return = [$item[1]]       }
+	      |  ident '<<' expr			{ $return = [@item[1,3]]     }
+	      |  ident '<<' expr '<<' expr		{ $return = [@item[1,3,5]]   }
+	      |  ident '<<' expr '<<' expr '<<' expr	{ $return = [@item[1,3,5,7]] }
+	      #  ...etc...
+
+
+Similarly, the C<<rightop:...E<gt>> directive takes a left operand, an operator, and a right operand:
+
+	assign:  <rightop: var '=' expr >
+
+and converts them to:
+
+	assign:	 ( (var '=' {$return=$item[1]})(s?) expr
+				{ $return = [ @{$item[1]}, $item[2] ] } )
+
+which is equivalent to a right-associative operator:
+
+	assign:	 var				{ $return = [$item[1]]       }
+	      |  var '=' expr			{ $return = [@item[1,3]]     }
+	      |  var '=' var '=' expr		{ $return = [@item[1,3,5]]   }
+	      |  var '=' var '=' var '=' expr	{ $return = [@item[1,3,5,7]] }
+	      #  ...etc...
+
+
+Note that for both the C<<leftop:...E<gt>> and C<<rightop:...E<gt>> directives, the directive does not normally
+return the operator itself, just a list of the operands involved. This is
+particularly handy for specifying lists:
+
+	list: '(' <leftop: list_item ',' list_item> ')' 
+			{ $return = $item[2] }
+
+There is, however, a problem: sometimes the operator is itself significant.
+For example, in a Perl list a comma and a C<=E<gt>> are both
+valid separators, but the C<=E<gt>> has additional stringification semantics.
+Hence it's important to know which was used in each case.
+
+To solve this problem the
+C<<leftop:...E<gt>> and C<<rightop:...E<gt>> directives
+I<do> return the operator(s) as well, under two circumstances.
+The first case is where the operator is specified as a subrule. In that instance,
+whatever the operator matches is returned (on the assumption that if the operator
+is important enough to have it's own subrule, then it's important enough to return).
+
+The second case is where the operator is specified as a regular
+expression. In that case, if the first bracketed subpattern of the
+regular expression matches, that matching value is returned (this is analogous to
+the behaviour of the Perl C<split> function, except that only the first subpattern
+is returned).
+
+In other words, given the input:
+
+	( a=>1, b=>2 )
+
+the specifications:
+
+	list:	   '('  <leftop: list_item separator list_item>  ')' 
+
+	separator: ',' | '=>'
+
+or:
+
+	list:	   '('  <leftop: list_item /(,|=>)/ list_item>  ')' 
+
+cause the list separators to be interleaved with the operands in the
+anonymous array in C<$item[2]>:
+
+	[ 'a', '=>', '1', ',', 'b', '=>', '2' ]
+
+
+But the following version:
+
+	list:	   '('  <leftop: list_item /,|=>/ list_item>  ')' 
+
+returns only the operators:
+
+	[ 'a', '1', 'b', '2' ]
+	
+Of course, none of the above specifications handle the case of an empty
+list, since the C<<leftop:...E<gt>> and C<<rightop:...E<gt>> directives
+require at least a single right or left operand to match. To specify
+that the operator can match "trivially", 
+it's necessary to add a C<(?)> qualifier to the directive:
+
+	list:	   '('  <leftop: list_item /(,|=>)/ list_item>(?)  ')' 
+
 =back
 
 
 =head2 Subrule argument lists
 
 It is occasionally useful to pass data to a subrule which is being invoked. For
-example, consider thes following grammar fragment:
+example, consider the following grammar fragment:
 
 	classdecl: keyword decl
 
@@ -1590,7 +1767,7 @@ Subrule argument lists are also useful for creating "rule templates"
 (especially when used in conjunction with the C<E<lt>matchrule:...E<gt>>
 directive). For example, the subrule:
 
-	list: 	  <matchrule:$arg{rule}> /$arg{sep}/ list[@arg]
+	list: 	  <matchrule:$arg{rule}> /$arg{sep}/ list[%arg]
 			{ $return = [ $item[1], @{$item[3]} ] }
 	    | 	  <matchrule:$arg{rule}>
 			{ $return = [ $item[1]] }
@@ -1735,7 +1912,7 @@ Hence after:
 	$add = "name: 'Jimmy-Bob' | 'Bobby-Jim'\ndesc: colour /necks?/";
 	parser->Replace($add);
 
-are are only I<only> valid "name"s and the one possible description.
+are are I<only> valid "name"s and the one possible description.
 
 A more interesting use of the C<Extend> and C<Replace> methods is to call them
 inside the action of an executing parser. For example:
@@ -1879,6 +2056,11 @@ Lookahead used in the wrong place or in a nonsensical way (fatal error).
 
 =item *
 
+Missing or extra components in a C<<leftopE<gt>> or C<<rightopE<gt>>
+directive.
+
+=item *
+
 Unrecognisable components in the grammar specification (fatal error).
 
 =item *
@@ -1904,6 +2086,12 @@ called directly through the parser object because of the predefined
 meaning of C<Parse::RecDescent::Replace> and
 C<Parse::RecDescent::Extend>. (Only a level 2 warning is generated, since
 such rules I<can> still be used as subrules).
+
+=item *
+
+Productions which consist of a single C<E<lt>error?<gt>>
+directive, and which therefore may succeed unexpectedly
+(a level 2 warning, since this might conceivably be the desired effect).
 
 =item *
 

@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.64 of Parse::RecDescent
+                 Release of version 1.65 of Parse::RecDescent
 ==============================================================================
 
 DESCRIPTION
@@ -79,9 +79,13 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.64
+CHANGES IN VERSION 1.65
 
 
+	- Added <leftop:...> and <rightop:...> directives
+
+	- Added level 2 warning and autoreject for lone <error?>
+	  directive in a production.
 
 
 ==============================================================================

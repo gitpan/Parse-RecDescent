@@ -100,9 +100,11 @@ sub extract_bracketed (;$$$)
 
 	$pre = $1;
 	my $qdel = "";
+	my $quotelike;
 	$ldel =~ s/'//g and $qdel .= q{'};
 	$ldel =~ s/"//g and $qdel .= q{"};
 	$ldel =~ s/`//g and $qdel .= q{`};
+	$ldel =~ s/q//g and $quotelike = 1;
 	$ldel =~ tr/[](){}<>\0-\377/[[(({{<</ds;
 	my $rdel = $ldel;
 
@@ -144,8 +146,12 @@ sub extract_bracketed (;$$$)
 			$@ = "Unmatched embedded quote ($1)";
 		        return _fail @fail;
 		}
+		elsif ($quotelike && extract_quotelike($text))
+		{
+			next;
+		}
 
-		else { $text =~ s/.//s }
+		else { $text =~ s/[a-zA-Z0-9]+|.//s }
 	}
 	if ($#nesting>=0)
 		{ $@ = "Unmatched opening bracket(s): "

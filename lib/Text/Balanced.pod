@@ -268,10 +268,17 @@ the result would be:
 
 	( '<A HREF=">', '>>>">link</A>', "" )
 
-Note that only C<'>, C<">, and C<`> quoting can be specified with
-C<extract_bracketed>. Where embedded Perl quotelike operators (C<q{}>, etc.)
-must also be catered for, use C<"extract_quotelike"> and
-C<"extract_codeblock"> instead.
+In addition to the quote delimiters C<'>, C<">, and C<`>, full Perl quote-like
+quoting (i.e. q{string}, qq{string}, etc) can be specified by including the
+letter 'q' as a delimiter. Hence:
+
+	@result = extract_bracketed( $text, '<q>' );
+
+would correctly match something like this:
+
+	$text = '<leftop: conj /and/ conj>';
+
+See also: C<"extract_quotelike"> and C<"extract_codeblock">.
 
 
 =head2 C<extract_tagged>

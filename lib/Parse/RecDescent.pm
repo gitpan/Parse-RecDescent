@@ -135,6 +135,7 @@ sub new ($$$$$)
 				"changed"  => 0,
 				"line"     => $line,
 				"impcount" => 0,
+				"opcount"  => 0,
 				"vars"	   => "",
 			}, $class;
 	}
@@ -146,6 +147,7 @@ sub reset($)
 	@{$_[0]->{"calls"}} = ();
 	$_[0]->{"changed"}  = 0;
 	$_[0]->{"impcount"}  = 0;
+	$_[0]->{"opcount"}  = 0;
 	$_[0]->{"vars"}  = "";
 }
 
@@ -219,16 +221,30 @@ sub addprod($$)
 	push @{$self->{"prods"}}, $prod;
 	$self->{"changed"} = 1;
 	$self->{"impcount"} = 0;
+	$self->{"opcount"} = 0;
 	$prod->{"number"} = $#{$self->{"prods"}};
 	return $prod;
 }
 
-sub addvar($$)
+sub addvar
 {
-	my ( $self, $var ) = @_;
-	$self->{"vars"} .= "my $var;\n";
+	my ( $self, $var, $parser ) = @_;
+	if ($var =~ /\A\s*local\s+([%@\$]\w+)/)
+	{
+		$parser->{localvars} .= " $1";
+		$self->{"vars"} .= "$var;\n" }
+	else 
+		{ $self->{"vars"} .= "my $var;\n" }
 	$self->{"changed"} = 1;
 	return 1;
+}
+
+sub nextoperator($)
+{
+	my $self = shift;
+	my $prodcount = scalar @{$self->{"prods"}};
+	my $opcount = ++$self->{"opcount"};
+	return "_operator_${opcount}_of_production_${prodcount}_of_rule_$self->{name}";
 }
 
 sub nextimplicit($)
@@ -291,13 +307,12 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	tie $prevline, q{Parse::RecDescent::LineCounter}, \$text, $thisparser, 1;
 
 	'. $self->{vars} .'
-
 ';
 
 	my $prod;
 	foreach $prod ( @{$self->{"prods"}} )
 	{
-		next if $prod->mustfail();
+		next unless $prod->checkleftmost();
 		$code .= $prod->code($namespace,$self,$parser);
 
 		$code .= $parser->{deferrable}
@@ -411,19 +426,33 @@ sub leftmostsubrule($)
 	return ();
 }
 
-sub mustfail($)
+sub checkleftmost($)
 {
 	my @items = @{$_[0]->{"items"}};
-	if (@items && ref($items[0]) =~ /\AParse::RecDescent::UncondReject/)
+	if (@items==1 && ref($items[0]) =~ /\AParse::RecDescent::Error/
+	    && $items[0]->{commitonly} )
 	{
-		Parse::RecDescent::_warn(1,"Optimizing away production: [". $_[0]->describe ."]")
-		and
+		Parse::RecDescent::_warn(2,"Lone <error?> in production treated
+					    as <error?> <reject>");
+		Parse::RecDescent::_hint("A production consisting of a single
+					  conditional <error?> directive would 
+					  normally succeed (with the value zero) if the
+					  rule is not 'commited' when it is
+					  tried. Since you almost certainly wanted
+					  '<error?> <reject>' Parse::RecDescent
+					  supplied it for you.");
+		push @{$_[0]->{items}},
+			Parse::RecDescent::UncondReject->new(0,0,'<reject>');
+	}
+	elsif (@items && ref($items[0]) =~ /\AParse::RecDescent::UncondReject/)
+	{
+		Parse::RecDescent::_warn(1,"Optimizing away production: [". $_[0]->describe ."]");
 		Parse::RecDescent::_hint("The production starts with an unconditional <reject>,
 		       or a <rulevar> (which is equivalent to a <reject>). In either case
 		       the production can never successfully match.");
-		return 1;
+		return 0;
 	}
-	return 0;
+	return 1;
 }
 
 sub changesskip($)
@@ -439,7 +468,88 @@ sub changesskip($)
 	return 0;
 }
 
-sub additem($$)
+sub adddirective
+{
+	my ( $self, $whichop, $line ) = @_;
+	push @{$self->{op}},
+		{ type=>$whichop, line=>$line,
+		  offset=> scalar(@{$self->{items}}) };
+}
+
+sub check_pending
+{
+	my ( $self, $line ) = @_;
+	if ($self->{op})
+	{
+	    while (my $next = pop @{$self->{op}})
+	    {
+		Parse::RecDescent::_error("Incomplete <$next->{type}op:...>.", $line);
+		Parse::RecDescent::_hint(
+			"The current production ended without completing the
+			 <$next->{type}op:...> directive that started near line
+			 $next->{line}. Did you forget the closing '>'?");
+	    }
+	}
+	return 1;
+}
+
+sub enddirective
+{
+	my ( $self, $line, $optional ) = @_;
+	unless ($self->{op})
+	{
+		Parse::RecDescent::_error("Unmatched > found.", $line);
+		Parse::RecDescent::_hint(
+			"A '>' angle bracket was encountered, which typically
+			 indicates the end of a directive. However no suitable
+			 preceding directive was encountered. Typically this
+			 indicates either a extra '>' in the grammar, or a
+			 problem inside the previous directive.");
+		return;
+	}
+	my $op = pop @{$self->{op}};
+	my $span = @{$self->{items}} - $op->{offset};
+	if ($op->{type} =~ /left|right/)
+	{
+	    if ($span != 3)
+	    {
+		Parse::RecDescent::_error(
+			"Incorrect <$op->{type}op:...> specification:
+			 expected 3 args, but found $span instead", $line);
+		Parse::RecDescent::_hint(
+			"The <$op->{type}op:...> directive requires a
+			 sequence of exactly three elements. For example:
+		         <$op->{type}op:leftarg /op/ rightarg>");
+	    }
+	    else
+	    {
+		push @{$self->{items}},
+			Parse::RecDescent::Operator->new(
+				$op->{type}, $optional,
+				splice(@{$self->{"items"}}, -3));
+	    }
+	}
+}
+
+sub prevwasreturn
+{
+	my ( $self, $line ) = @_;
+	unless (@{$self->{items}})
+	{
+		Parse::RecDescent::_error(
+			"Incorrect <return:...> specification:
+			expected item missing", $line);
+		Parse::RecDescent::_hint(
+			"The <return:...> directive requires a
+			sequence of at least one item. For example:
+		        <return: list>");
+		return;
+	}
+	push @{$self->{items}},
+		Parse::RecDescent::Result->new();
+}
+
+sub additem
 {
 	my ( $self, $item ) = @_;
 	push @{$self->{"items"}}, $item;
@@ -506,6 +616,7 @@ sub code($$$$)
 
 	my $item;
 	my $i;
+
 	for ($i = 0; $i < @{$self->{"items"}}; $i++)
 	{
 		$item = ${$self->{items}}[$i];
@@ -695,7 +806,7 @@ package Parse::RecDescent::Error;
 
 sub issubrule { undef }
 sub isterminal { 0 }
-sub describe { $_[1] ? '' : $_[0]->{commitonly} ? '<error?:...' : '<error...>' }
+sub describe { $_[1] ? '' : $_[0]->{commitonly} ? '<error?:...>' : '<error...>' }
 
 sub new ($$$$$)
 {
@@ -725,7 +836,6 @@ sub code($$$$)
 	{
 		$action .= '
 		my $rule = $item[0];
-		   $rule =~ s/\Aimplicit_subrule_.\d*\Z/implicit subrule/;
 		   $rule =~ s/_/ /g;
 		#WAS: Parse::RecDescent::_error("Invalid $rule: " . $expectation->message() ,$thisline);
 		push @{$thisparser->{errors}}, ["Invalid $rule: " . $expectation->message() ,$thisline];
@@ -1062,8 +1172,6 @@ sub code($$$$)
 '
 }
 
-1;
-
 package Parse::RecDescent::Repetition;
 
 sub issubrule ($) { return $_[0]->{"subrule"} }
@@ -1172,7 +1280,160 @@ sub code($$$$)
 '
 }
 
-1;
+package Parse::RecDescent::Result;
+
+sub issubrule { 0 }
+sub isterminal { 0 }
+sub describe { '' }
+
+sub new
+{
+	my ($class) = @_;
+
+	bless {}, $class;
+}
+
+sub code($$$$)
+{
+	my ($self, $namespace, $rule) = @_;
+	
+	'
+		$return = $item[-1];
+	';
+}
+
+package Parse::RecDescent::Operator;
+
+my @opertype = ( " non-optional", "n optional" );
+
+sub issubrule { 0 }
+sub isterminal { 0 }
+
+sub describe { $_[0]->{"expected"} }
+
+
+sub new
+{
+	my ($class, $type, $opt, $leftarg, $op, $rightarg) = @_;
+
+	bless 
+	{
+		"type"      => "${type}op",
+		"leftarg"   => $leftarg,
+		"op"        => $op,
+		"opt"       => $opt,
+		"rightarg"  => $rightarg,
+		"expected"  => "<${type}op: ".$leftarg->describe." ".$op->describe." ".$rightarg->describe.">",
+	}, $class;
+}
+
+sub code($$$$)
+{
+	my ($self, $namespace, $rule) = @_;
+	
+	my ($leftarg, $op, $rightarg) =
+		@{$self}{ qw{leftarg op rightarg} };
+
+	my $code = '
+		Parse::RecDescent::_trace(q{Trying operator: [' . $self->describe . ']},
+				  Parse::RecDescent::_tracefirst($text),
+				  q{' . $rule->{"name"} . '})
+					if defined $::RD_TRACE;
+		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
+				: 'qq{'.$self->describe.'}' ) . ')->at($text);
+
+		$_tok = undef;
+		OPLOOP: while (1)
+		{
+		  my  @item;
+		  ';
+
+	if ($self->{type} eq "leftop" )
+	{
+		$code .= '
+		  # MATCH LEFTARG
+		  ' . $leftarg->code(@_[1..2]) . '
+
+		  my $savetext = $text;
+		  my $backtrack;
+
+		  # MATCH (OP RIGHTARG)(s)
+		  while (1)
+		  {
+			$backtrack = 0;
+			' . $op->code(@_[1..2]) . '
+			' . ($op->isterminal() ? 'pop @item;' : '$backtrack=1;' ) . '
+			' . (ref($op) eq 'Parse::RecDescent::Token'
+				? 'if (defined $1) {push @item, $1; $backtrack=1;}'
+				: "" ) . '
+			' . $rightarg->code(@_[1..2]) . '
+			$savetext = $text;
+		  }
+		  $text = $savetext;
+		  pop @item if $backtrack;
+
+		  ';
+	}
+	else
+	{
+		$code .= '
+		  my $savetext = $text;
+		  my $backtrack;
+		  # MATCH (LEFTARG OP)(s)
+		  while (1)
+		  {
+			$backtrack = 0;
+			' . $leftarg->code(@_[1..2]) . '
+			$backtrack = 1;
+			' . $op->code(@_[1..2]) . '
+			$savetext = $text;
+			' . ($op->isterminal() ? 'pop @item;' : "" ) . '
+			' . (ref($op) eq 'Parse::RecDescent::Token' ? 'push @item, $1 if defined $1;' : "" ) . '
+		  }
+		  $text = $savetext;
+		  pop @item if $backtrack;
+
+		  # MATCH RIGHTARG
+		  ' . $rightarg->code(@_[1..2]) . '
+		  ';
+	}
+
+	$code .= 'unless (@item) { undef $_tok; last }' unless $self->{opt};
+
+	$code .= '
+		  $_tok = [ @item ];
+		  last;
+		} 
+
+		unless ('
+			. ($self->{opt} ? "1||" : "") .
+			'$_tok)
+		{
+			Parse::RecDescent::_trace(q{<<Didn\'t match operator: ['
+						  . $self->describe
+						  . ']>>},
+						  Parse::RecDescent::_tracefirst($text),
+						  q{' . $rule->{"name"} .'})
+							if defined $::RD_TRACE;
+			$expectation->failed();
+			last;
+		}
+		Parse::RecDescent::_trace(q{>>Matched a'
+					  .  $opertype[$self->{opt}]
+					  . ' operator: ['
+					  . $self->describe
+					  . ']<< (return value: [}
+					  . qq{@{$_tok||[]}} . q{]},
+					  Parse::RecDescent::_tracefirst($text),
+					  q{' . $rule->{"name"} .'})
+						if defined $::RD_TRACE;
+
+		push @item, $_tok||[];
+
+';
+	return $code;
+}
+
 
 package Parse::RecDescent::Expectation;
 
@@ -1231,7 +1492,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.64';
+$VERSION = '1.65';
 
 # BUILDING A PARSER
 
@@ -1250,6 +1511,7 @@ sub new ($$)
 		"rules"     => {},
 		"namespace" => _nextnamespace(),
 		"startcode" => '',
+		"localvars" => '',
 		"_AUTOACTION" => undef,
 	};
 	if ($::RD_AUTOACTION)
@@ -1322,6 +1584,8 @@ my $UNCOMMITMK		= '\A\s*<uncommit>';
 my $REJECTMK		= '\A\s*<reject>';
 my $CONDREJECTMK	= '\A\s*<reject:';
 my $SKIPMK		= '\A\s*<skip:';
+my $OPMK		= '\A\s*<(left|right)op:';
+my $ENDDIRECTIVEMK	= '\A\s*>((?:\(\?\))?)';
 my $RESYNCMK		= '\A\s*<resync>';
 my $RESYNCPATMK		= '\A\s*<resync:';
 my $RULEVARPATMK	= '\A\s*<rulevar:';
@@ -1336,10 +1600,9 @@ my $OTHER		= '\A\s*([^\s]+)';
 
 my $lines = 0;
 
-
-sub _generate($$$;$)
+sub _generate($$$;$$)
 {
-	my ($self, $grammar, $replace, $isimplicit) = (@_, 0);
+	my ($self, $grammar, $replace, $isimplicit, $isleftop) = (@_, 0);
 
 	my $aftererror = 0;
 	my $lookahead = 0;
@@ -1398,11 +1661,21 @@ sub _generate($$$;$)
 			$self->_generate("$implicit : $code",$replace,1);
 			$grammar = $implicit . $grammar;
 		}
+		elsif ($grammar =~ s/$ENDDIRECTIVEMK//)
+		{
+			$prod && $prod->enddirective($line,$1?1:0);
+		}
+		elsif ($grammar =~ s/$OPMK//)
+		{
+			_parse("a $1-associative operator directive", $aftererror, $line, "<$1op:...>");
+			$prod->adddirective($1, $line);
+		}
 		elsif ($grammar =~ s/$UNCOMMITPROD//)
 		{
 			_parseunneg("a new (uncommitted) production",
 				    0, $lookahead, $line) or next;
 
+			$prod->check_pending($line) if $prod;
 			$prod = new Parse::RecDescent::Production($line,1,0);
 			$rule and $rule->addprod($prod)
 			      or  _no_rule("<uncommit>",$line);
@@ -1412,6 +1685,7 @@ sub _generate($$$;$)
 		{
 			_parseunneg("a new (error) production", $aftererror,
 				    $lookahead,$line) or next;
+			$prod->check_pending($line) if $prod;
 			$prod = new Parse::RecDescent::Production($line,0,1);
 			$rule and $rule->addprod($prod)
 			      or  _no_rule("<error>",$line);
@@ -1485,7 +1759,7 @@ sub _generate($$$;$)
 			_parse("a rule variable specifier", $aftererror,$line,$code);
 			$code =~ /\A\s*<rulevar:(.*)>\Z/s;
 
-			$rule and $rule->addvar($1)
+			$rule and $rule->addvar($1,$self)
 			      or  _no_rule($code,$line);
 
 			$item = new Parse::RecDescent::UncondReject($lookahead,$line,$code);
@@ -1586,6 +1860,7 @@ sub _generate($$$;$)
 				       parsers).");
 			}
 			$rule = new Parse::RecDescent::Rule($rulename,$self,$line,$replace);
+			$prod->check_pending($line) if $prod;
 			$prod = $rule->addprod( new Parse::RecDescent::Production );
 			$aftererror = 0;
 		}
@@ -1594,6 +1869,7 @@ sub _generate($$$;$)
 			_parseunneg("a new production", 0,
 				    $lookahead,$line) or next;
 			$rule
+			  and (!$prod || $prod->check_pending($line))
 			  and $prod = $rule->addprod(new Parse::RecDescent::Production($line))
 			or  _no_rule("production",$line);
 			$aftererror = 0;
@@ -1845,7 +2121,6 @@ sub _generate($$$;$)
 		local $::RD_HINT = 1;
 		_hint('Set $::RD_HINT (or -RD_HINT if you\'re using "perl -s")
 		       for hints on fixing these problems.');
-		# undef $::RD_HINT;
 	}
 	return $ERRORS ? undef : $self;
 }
@@ -1953,7 +2228,7 @@ sub _code($)
 	my $code = qq{
 package $self->{namespace};
 use strict;
-use vars qw(\$skip \$AUTOLOAD);
+use vars qw(\$skip \$AUTOLOAD $self->{localvars} );
 \$skip = '$skip';
 $self->{startcode}
 
@@ -2117,7 +2392,7 @@ sub _error($;$)
 
 sub _warn($$;$)
 {
-	return 0 if !_verbosity("WARN") || $_[0] < ($::RD_WARN||1);
+	return 0 unless _verbosity("WARN") && ($::RD_HINT || $_[0] >= ($::RD_WARN||1));
 	$errortext   = $_[1];
 	$errorprefix = "Warning" .  ($_[2] ? " (line $_[2])" : "");
 	print ERROR "\n";
@@ -2215,7 +2490,7 @@ sub _parse($$$;$)
 		and
 		_hint("An unconditional <error> always causes the
 		       production containing it to immediately fail.
-		       \u$_[0] which follows an <error>
+		       \u$_[0] that follows an <error>
 		       will never be reached.  Did you mean to use
 		       <error?> instead?");
 	}

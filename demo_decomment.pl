@@ -15,41 +15,44 @@ my $parser = new Parse::RecDescent $Grammar  or  die "invalid grammar";
 undef $/;
 my $text = @ARGV ? <> : <DATA>;
 
-$parser->program($text);
+my $parts = $parser->program($text) or die "malformed C program";
+
+print "Comments\n========\n$parts->{comments}\n";
+print "\nCode\n====\n$parts->{code}\n";
 
 BEGIN
 { $Grammar=<<'EOF';
 
-{ my $WithinComment; }
+program : <rulevar: local $WithinComment=0>
+program : <rulevar: local $Comments = "">
+program : <rulevar: local $Code = "">
 
-program	: <skip:''> part(s)
+program	: <skip:''> part(s) { { code=>$Code, comments=>$Comments} }
 
 part	: comment
         | ptext
-		 { $WithinComment= 0; }
+		 { $WithinComment=0; }
         | string
 
 ptext   : m|[^"/]+|
-		{ print "$item[1]"; $WithinComment= 0; }
+		{ $WithinComment=0; $Code .= $item[1] }
         | m|/[^*/]|
-		{ print "$item[1]"; $WithinComment= 0; }
+		{ $WithinComment=0; $Code .= $item[1] }
 
-string	: '"' s_char(s?) '"'
-		{ print '"',@{$item[2]},'"'; }
+string	: /"(\\.|[^"\\])+"/
+		{ $Code .= $item[1] }
 
-s_char	: /[^"\\]+/
-	| /(?:\\.)+/
 
 comment	: m|\s*//[^\n]*\n|
-		{ print "\n"  unless $WithinComment++;  }
+		{ $Code .= "\n"  unless $WithinComment++; $Comments .= $item[1] }
 	| m{\s*/\*(?:[^*]+|\*(?!/))*\*/[ \t]*}
-		{ print " "; }
+		{ $Comments .= $item[1]; $Code .= " "; }
 	| m{\s*/\*		# opt. white space comment opener, then...
 	    (?:[^*]+|\*(?!/))*	# anything except */ ...
 	    \*/		        # comment closer
             ([ \t]*)?           # trailing blanks or tabs
 	   }x	
-		{ print "\n" unless $WithinComment++;  }
+		{ $Comments .= $item[1]; $Code .= "\n" unless $WithinComment++;  }
 
 EOF
 }
@@ -71,7 +74,7 @@ int main()
              variable */
       // should be completely removed
 
-  char *str = "/* this is no comment */";
+  char *str = "/* ceci n'est pas un commentaire */";
   return 0;
 }
 
