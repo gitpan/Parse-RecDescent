@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.78 of Parse::RecDescent
+                 Release of version 1.79 of Parse::RecDescent
 ==============================================================================
 
 
@@ -81,29 +81,26 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.78
+CHANGES IN VERSION 1.79
 
 
-        - Fixed error messages and documentation for
-          Parse::RecDescent::Precompile (thanks Jim)
+	- Pod tweak (thanks Abigail)
 
-        - Moved demos to /demo subdirectory
+	- Documented need to use do{..} within some <reject:...>
+	  directives (thanks Paul)
 
-        - Added tutorial in /tutorial subdirectory
+	- Added Save method
 
-        - Added <autotree> directive
+	- Fixed bug that was preventing precompiled parsers being 
+	  subsequently extended (thanks Jeff).
 
-	- Added (s /sep/) notation (thanks Greg)
+	- Changed keys used by %item. Now uses "named positionals"
+	  rather that simple positionals for non-subrule items
+	  (see documentation)
 
-	- Circumvented \G and /gc calamities
+	- Added trimmer for surrounding whitespace in matchrules.
 
-        - Added more comprehensible error message when parser invoked
-          through non-existent startrule (thanks Jeff)
-
-	- Fixed serious bug with creating new parsers after existing
-	  ones had failed. (Thanks Paul)
-
-	- Fixed problem with nested implicit subrules (thanks Marc).
+	- Squelched bug in (not) handling invalid directives (thanks John)
 
 
 ==============================================================================

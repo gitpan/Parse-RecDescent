@@ -38,6 +38,12 @@ sub import	# IMPLEMENT PRECOMPILER BEHAVIOUR UNDER:
 	}
 }
 		
+sub Save
+{
+	my ($self, $class) = @_;
+	$self->Precompile(undef,$class);
+}
+
 sub Precompile
 {
 		my ($self, $grammar, $class, $sourcefile) = @_;
@@ -53,11 +59,12 @@ sub Precompile
 
 		print STDERR "precompiling grammar from file '$sourcefile'\n",
 			     "to class $class in module file '$modulefile'\n"
-					if $sourcefile;
+					if $grammar && $sourcefile;
 
 		local $::RD_HINT = 1;
 		$self = Parse::RecDescent->new($grammar,1)
-			or croak("Can't compile bad grammar");
+			|| croak("Can't compile bad grammar")
+				if $grammar;
 
 		foreach ( keys %{$self->{rules}} )
 			{ $self->{rules}{$_}{changed} = 1 }
@@ -492,6 +499,10 @@ sub new ($$;$$)
 		"uncommit" => $uncommit,
 		"error"    => $error,
 		"line"     => $line,
+		strcount   => 0,
+		patcount   => 0,
+		dircount   => 0,
+		actcount   => 0,
 	}, $class;
 }
 
@@ -654,6 +665,7 @@ sub enddirective
 		push @{$self->{items}},
 			Parse::RecDescent::Operator->new(
 				$op->{type}, $minrep, $maxrep, splice(@{$self->{"items"}}, -3));
+		$self->{items}[-1]->sethashname($self);
 	    }
 	}
 }
@@ -679,6 +691,7 @@ sub prevwasreturn
 sub additem
 {
 	my ( $self, $item ) = @_;
+	$item->sethashname($self);
 	push @{$self->{"items"}}, $item;
 	return $item;
 }
@@ -814,6 +827,8 @@ package Parse::RecDescent::Action;
 
 sub describe { undef }
 
+sub sethashname { $_[0]->{hashname} = '__ACTION' . ++$_[1]->{actcount} .'__'; }
+
 sub new
 {
 	my $class = ref($_[0]) || $_[0];
@@ -850,14 +865,17 @@ sub code($$$$)
 					  . $_tok . q{])}, $text)
 						if defined $::RD_TRACE;
 		push @item, $_tok;
-		' . ($self->{line}>=0 ? '$item{$#item}=$_tok;' : '' ) .'
+		' . ($self->{line}>=0 ? '$item{'. $self->{hashname} .'}=$_tok;' : '' ) .'
 		' . ($self->{"lookahead"} ? '$text = $_savetext;' : '' ) .'
 '
 }
 
+
 1;
 
 package Parse::RecDescent::Directive;
+
+sub sethashname { $_[0]->{hashname} = '__DIRECTIVE' . ++$_[1]->{dircount} .  '__'; }
 
 sub issubrule { undef }
 sub isterminal { 0 }
@@ -904,7 +922,7 @@ sub code($$$$)
 		' . ($self->{"lookahead"} ? '$text = $_savetext and ' : '' ) .'
 		last '
 		. ($self->{"lookahead"}<0?'if':'unless') . ' defined $_tok;
-		push @item, $item{1+$#item}=$_tok;
+		push @item, $item{'.$self->{hashname}.'}=$_tok;
 		' . ($self->{"lookahead"} ? '$text = $_savetext;' : '' ) .'
 '
 }
@@ -916,6 +934,7 @@ package Parse::RecDescent::UncondReject;
 sub issubrule { undef }
 sub isterminal { 0 }
 sub describe { $_[1] ? '' : $_[0]->{name} }
+sub sethashname { $_[0]->{hashname} = '__DIRECTIVE' . ++$_[1]->{dircount} .  '__'; }
 
 sub new ($$$;$)
 {
@@ -957,6 +976,7 @@ package Parse::RecDescent::Error;
 sub issubrule { undef }
 sub isterminal { 0 }
 sub describe { $_[1] ? '' : $_[0]->{commitonly} ? '<error?:...>' : '<error...>' }
+sub sethashname { $_[0]->{hashname} = '__DIRECTIVE' . ++$_[1]->{dircount} .  '__'; }
 
 sub new ($$$$$)
 {
@@ -997,12 +1017,15 @@ sub code($$$$)
 		($self->{"commitonly"} ? '$commit' : '1') . 
 		") { do {$action} unless ".' $_noactions; undef } else {0}',
 	        			$self->{"lookahead"},0,$self->describe); 
+	$dir->{hashname} = $self->{hashname};
 	return $dir->code($namespace, $rule, 0);
 }
 
 1;
 
 package Parse::RecDescent::Token;
+
+sub sethashname { $_[0]->{hashname} = '__PATTERN' . ++$_[1]->{patcount} . '__'; }
 
 sub issubrule { undef }
 sub isterminal { 1 }
@@ -1096,7 +1119,7 @@ my $code = '
 						. $& . q{])},
 						  Parse::RecDescent::_tracefirst($text))
 					if defined $::RD_TRACE;
-		push @item, $item{1+$#item}=$&;
+		push @item, $item{'.$self->{hashname}.'}=$&;
 		' . ($self->{"lookahead"} ? '$text = $_savetext;' : '' ) .'
 ';
 
@@ -1106,6 +1129,8 @@ my $code = '
 1;
 
 package Parse::RecDescent::Literal;
+
+sub sethashname { $_[0]->{hashname} = '__STRING' . ++$_[1]->{strcount} . '__'; }
 
 sub issubrule { undef }
 sub isterminal { 1 }
@@ -1163,7 +1188,7 @@ my $code = '
 						. $& . q{])},
 						  Parse::RecDescent::_tracefirst($text))
 							if defined $::RD_TRACE;
-		push @item, $item{1+$#item}=$&;
+		push @item, $item{'.$self->{hashname}.'}=$&;
 		' . ($self->{"lookahead"} ? '$text = $_savetext;' : '' ) .'
 ';
 
@@ -1173,6 +1198,8 @@ my $code = '
 1;
 
 package Parse::RecDescent::InterpLit;
+
+sub sethashname { $_[0]->{hashname} = '__STRING' . ++$_[1]->{strcount} . '__'; }
 
 sub issubrule { undef }
 sub isterminal { 1 }
@@ -1233,7 +1260,7 @@ my $code = '
 						. $_tok . q{])},
 						  Parse::RecDescent::_tracefirst($text))
 							if defined $::RD_TRACE;
-		push @item, $item{1+$#item}=$_tok;
+		push @item, $item{'.$self->{hashname}.'}=$_tok;
 		' . ($self->{"lookahead"} ? '$text = $_savetext;' : '' ) .'
 ';
 
@@ -1246,6 +1273,7 @@ package Parse::RecDescent::Subrule;
 
 sub issubrule ($) { return $_[0]->{"subrule"} }
 sub isterminal { 0 }
+sub sethashname {}
 
 sub describe ($)
 {
@@ -1331,6 +1359,7 @@ package Parse::RecDescent::Repetition;
 
 sub issubrule ($) { return $_[0]->{"subrule"} }
 sub isterminal { 0 }
+sub sethashname { }
 
 sub describe ($)
 {
@@ -1445,7 +1474,7 @@ sub describe { '' }
 
 sub new
 {
-	my ($class) = @_;
+	my ($class, $pos) = @_;
 
 	bless {}, $class;
 }
@@ -1467,6 +1496,7 @@ sub issubrule { 0 }
 sub isterminal { 0 }
 
 sub describe { $_[0]->{"expected"} }
+sub sethashname { $_[0]->{hashname} = '__DIRECTIVE' . ++$_[1]->{dircount} .  '__'; }
 
 
 sub new
@@ -1526,7 +1556,7 @@ sub code($$$$)
 			' . $op->code(@_[1..2]) . '
 			' . ($op->isterminal() ? 'pop @item;' : '$backtrack=1;' ) . '
 			' . (ref($op) eq 'Parse::RecDescent::Token'
-				? 'if (defined $1) {push @item, $item{1+$#item}=$1; $backtrack=1;}'
+				? 'if (defined $1) {push @item, $item{'.$self->{hashname}.'}=$1; $backtrack=1;}'
 				: "" ) . '
 			' . $rightarg->code(@_[1..2]) . '
 			$savetext = $text;
@@ -1552,7 +1582,7 @@ sub code($$$$)
 			' . $op->code(@_[1..2]) . '
 			$savetext = $text;
 			' . ($op->isterminal() ? 'pop @item;' : "" ) . '
-			' . (ref($op) eq 'Parse::RecDescent::Token' ? 'do { push @item, $item{1+$#item}=$1; } if defined $1;' : "" ) . '
+			' . (ref($op) eq 'Parse::RecDescent::Token' ? 'do { push @item, $item{'.$self->{hashname}.'}=$1; } if defined $1;' : "" ) . '
 		  }
 		  $text = $savetext;
 		  pop @item if $backtrack;
@@ -1589,7 +1619,7 @@ sub code($$$$)
 					  q{' . $rule->{"name"} .'})
 						if defined $::RD_TRACE;
 
-		push @item, $item{1+$#item}=$_tok||[];
+		push @item, $item{'.$self->{hashname}.'}=$_tok||[];
 
 ';
 	return $code;
@@ -1653,7 +1683,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.78';
+$VERSION = '1.79';
 
 # BUILDING A PARSER
 
@@ -1667,13 +1697,13 @@ sub _nextnamespace()
 sub new ($$)
 {
 	my $class = ref($_[0]) || $_[0];
+	local $Parse::RecDescent::compiling = $_[2],
 	my $self =
 	{
 		"rules"     => {},
 		"namespace" => _nextnamespace(),
 		"startcode" => '',
 		"localvars" => '',
-		"compiling" => $_[2],
 		"_AUTOACTION" => undef,
 		"_AUTOTREE"   => undef,
 	};
@@ -1726,8 +1756,8 @@ my $RULE		= '\G\s*(\w+)[ \t]*:';
 my $PROD		= '\G\s*([|])';
 my $TOKEN		= q{\G\s*/((\\\\/|[^/])*)/([cgimsox]*)};
 my $MTOKEN		= q{\G\s*(m\s*[^\w\s])};
-my $LITERAL		= q{\G\s*'((\\\\['\\\\]|[^'])+)'};
-my $INTERPLIT		= q{\G\s*"((\\\\["\\\\]|[^"])+)"};
+my $LITERAL		= q{\G\s*'((\\\\['\\\\]|[^'])*)'};
+my $INTERPLIT		= q{\G\s*"((\\\\["\\\\]|[^"])*)"};
 my $SUBRULE		= '\G\s*(\w+)';
 my $MATCHRULE		= '\G(\s*<matchrule:)';
 my $SIMPLEPAT		= '((\\s+\\/[^\\/\\\\]*(?:\\\\\\/[^\\/\\\\]*)*\\/)?)';
@@ -2135,13 +2165,38 @@ sub _generate($$$;$$)
 				      or  _no_rule("$code",$line);
 				$aftererror = !$commitonly;
 			}
+			elsif (do { $commitonly = $1;
+					 ($code) = extract_bracketed($grammar,'<');
+					$code })
+			{
+				if ($code =~ /^<[A-Z_]+>$/)
+				{
+					_error("Token items are not yet
+					supported: \"$code\"",
+					       $line);
+					_hint("Items like $code that consist of angle
+					brackets enclosing a sequence of
+					uppercase characters will eventually
+					be used to specify pre-lexed tokens
+					in a grammar. That functionality is not
+					yet implemented. Or did you misspell
+					\"$code\"?");
+				}
+				else
+				{
+					_error("Untranslatable item encountered: \"$code\"",
+					       $line);
+					_hint("Did you misspell \"$code\"
+						   or forget to comment it out?");
+				}
+			}
 		}
 		elsif ($grammar =~ m/$RULE/gco)
 		{
 			_parseunneg("a rule declaration", 0,
 				    $lookahead,$line) or next;
 			my $rulename = $1;
-			if ($rulename =~ /Replace|Extend|Compile/ )
+			if ($rulename =~ /Replace|Extend|Precompile|Save/ )
 			{	
 				_warn(2,"Rule \"$rulename\" hidden by method
 				       Parse::RecDescent::$rulename",$line)
@@ -2239,8 +2294,8 @@ sub _generate($$$;$$)
 			my $matchrule = 0;
 			if (substr($name,0,1) eq '<')
 			{
-				$name =~ s/$MATCHRULE//;
-				$name =~ s/>\Z//;
+				$name =~ s/$MATCHRULE\s*//;
+				$name =~ s/\s*>\Z//;
 				$matchrule = 1;
 			}
 
@@ -2496,7 +2551,7 @@ sub _generate($$$;$$)
 		$self->_check_grammar();
 	}
 
-	unless ($ERRORS or $isimplicit or $self->{'compiling'})
+	unless ($ERRORS or $isimplicit or $Parse::RecDescent::compiling)
 	{
 		my $code = $self->_code();
 		if (defined $::RD_TRACE)

@@ -4,6 +4,8 @@
 
 use Parse::RecDescent;
 
+open (Parse::RecDescent::ERROR, ">errfile") or die;
+
 $grammar =
 q{
 	typedef : a ... ...! ... b

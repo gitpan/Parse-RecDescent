@@ -395,3 +395,24 @@ Revision history for Perl extension Parse::RecDescent.
 	  ones had failed. (Thanks Paul)
 
 	- Fixed problem with nested implicit subrules (thanks Marc).
+
+
+1.79	Mon Aug 21 11:27:39 2000
+
+	- Pod tweak (thanks Abigail)
+
+	- Documented need to use do{..} within some <reject:...>
+	  directives (thanks Paul)
+
+	- Added Save method
+
+	- Fixed bug that was preventing precompiled parsers being 
+	  subsequently extended (thanks Jeff).
+
+	- Changed keys used by %item. Now uses "named positionals"
+	  rather that simple positionals for non-subrule items
+	  (see documentation)
+
+	- Added trimmer for surrounding whitespace in matchrules.
+
+	- Squelched bug in (not) handling invalid directives (thanks John)

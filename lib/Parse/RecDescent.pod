@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.78 of Parse::RecDescent,
-released March 20, 2000.
+This document describes version 1.79 of Parse::RecDescent,
+released August 21, 2000.
 
 =head1 SYNOPSIS
 
@@ -266,6 +266,13 @@ the value associated with the repeated subrule "statement(s)" is a reference
 to an array containing the values matched by each call to the individual
 subrule "statement".
 
+Repetition modifieres may include a separator pattern:
+
+		program: statement(s /;/)
+
+specifying some sequence of characters to be skipped between each repetition.
+This is really just a shorthand for the E<lt>leftop:...E<gt> directive
+(see below).
 
 =head2 Tokens
 
@@ -416,21 +423,27 @@ access to the same item values:
 					     # (EVEN EASIER THAN USING @item)
 
 
-The results of named subrules are stored in the hash under each subrule's name,
-whilst all other items are stored under a key that is their ordinal position:
+The results of named subrules are stored in the hash under each
+subrule's name, whilst all other items are stored under a "named
+positional" key that indictates their ordinal position within their item
+type: __STRINGI<n>__, __PATTERNI<n>__, __DIRECTIVEI<n>__, __ACTIONI<n>__:
 
-	stuff: /various/ bits 'and' pieces "then" data 'end'
-			{ print $item{1}        # PRINTS various
-					        # (SIMILAR TO USING @item)
+        stuff: /various/ bits 'and' pieces "then" data 'end' { save }
+                        { print $item{__PATTERN1__}, # PRINTS 'various'
+                                $item{__STRING2__},  # PRINTS 'then'
+                                $item{__ACTION1__},  # PRINTS RETURN
+						     # VALUE OF save
+                        }
 
-If you want I<named> access to patterns or literals, you need to turn 
+
+If you want proper I<named> access to patterns or literals, you need to turn 
 them into separate rules: 
 
-	stuff: various bits 'and' pieces "then" data 'end'
-			{ print $item{various}  # PRINTS various
-					        # (EVEN EASIER THAN USING @item)
+        stuff: various bits 'and' pieces "then" data 'end'
+                        { print $item{various}  # PRINTS various
+                        }
 
-	various: /various/
+        various: /various/
 
 
 The special entry C<$item{__RULE__}> stores the name of the current
@@ -446,19 +459,19 @@ of C<%item> is unaffected by such an insertion.
 A limitation of the C<%item> hash is that it only records the I<last>
 value of a particular subrule. For example:
 
-	range: '(' number '..' number )'
-			{ $return = $item{number} }
+        range: '(' number '..' number )'
+                        { $return = $item{number} }
 
-wil return only the value corresponding to the I<second> match of the
+will return only the value corresponding to the I<second> match of the
 C<number> subrule. In other words, successive calls to a subrule
 overwrite the corresponding entry in C<%item>. Once again, the
 solution is to rename each subrule in its own rule:
 
-	range: '(' from_num '..' to_num )'
-			{ $return = $item{from_num} }
+        range: '(' from_num '..' to_num )'
+                        { $return = $item{from_num} }
 
-	from_num: number
-	to_num:   number
+        from_num: number
+        to_num:   number
 
 
 
@@ -500,11 +513,11 @@ propagate> out of unsuccessful productions, but I<do> survive
 successful productions. Hence it is possible to dynamically alter the
 text being parsed - for example, to provide a C<#include>-like facility:
 
-	hash_include: '#include' filename
-				{ $text = ::loadfile($item[2]) . $text }
+        hash_include: '#include' filename
+                                { $text = ::loadfile($item[2]) . $text }
 
-	filename: '<' /[a-z0-9._-]+/i '>'  { $return = $item[2] }
-		| '"' /[a-z0-9._-]+/i '"'  { $return = $item[2] }
+        filename: '<' /[a-z0-9._-]+/i '>'  { $return = $item[2] }
+                | '"' /[a-z0-9._-]+/i '"'  { $return = $item[2] }
 
 
 =item C<$thisline> and C<$prevline>
@@ -539,9 +552,9 @@ Also see the entry for C<@itempos>.
 The line number can be set to values other than 1, by calling the start
 rule with a second argument. For example:
 
-	$parser = new Parse::RecDescent ($grammar);
+        $parser = new Parse::RecDescent ($grammar);
 
-	$parser->input($text, 10);	# START LINE NUMBERS AT 10
+        $parser->input($text, 10);      # START LINE NUMBERS AT 10
 
 
 =item C<$thiscolumn> and C<$prevcolumn>
@@ -555,7 +568,7 @@ For efficiency, C<$thiscolumn> and C<$prevcolumn> are
 actually tied hashes, and only recompute the required column number
 when the variable's value is used.
 
-Assignment to C<$thiscolumn> or <$prevcolumn> is a fatal error.
+Assignment to C<$thiscolumn> or C<$prevcolumn> is a fatal error.
 
 Modifying the value of the variable C<$text> (as in the previous
 C<hash_include> example, for instance) may confuse the column
@@ -565,11 +578,11 @@ Note that C<$thiscolumn> reports the column number I<before> any
 whitespace that might be skipped before reading a token. Hence
 if you wish to know where a token started (and ended) use something like this:
 
-	rule: token1 token2 startcol token3 endcol token4
-			{ print "token3: columns $item[3] to $item[5]"; }
+        rule: token1 token2 startcol token3 endcol token4
+                        { print "token3: columns $item[3] to $item[5]"; }
 
-	startcol: // { $thiscolumn }	# NEED THE // TO STEP PAST TOKEN SEP
-	endcol:      { $prevcolumn }
+        startcol: // { $thiscolumn }    # NEED THE // TO STEP PAST TOKEN SEP
+        endcol:      { $prevcolumn }
 
 Also see the entry for C<@itempos>.
 
@@ -598,40 +611,40 @@ The array C<@itempos> stores a hash reference corresponding to
 each element of C<@item>. The elements of the hash provide the
 following:
 
-	$itempos[$n]{offset}{from}	# VALUE OF $thisoffset BEFORE $item[$n]
-	$itempos[$n]{offset}{to}	# VALUE OF $prevoffset AFTER $item[$n]
-	$itempos[$n]{line}{from}	# VALUE OF $thisline BEFORE $item[$n]
-	$itempos[$n]{line}{to}		# VALUE OF $prevline AFTER $item[$n]
-	$itempos[$n]{column}{from}	# VALUE OF $thiscolumn BEFORE $item[$n]
-	$itempos[$n]{column}{to}	# VALUE OF $prevcolumn AFTER $item[$n]
+        $itempos[$n]{offset}{from}      # VALUE OF $thisoffset BEFORE $item[$n]
+        $itempos[$n]{offset}{to}        # VALUE OF $prevoffset AFTER $item[$n]
+        $itempos[$n]{line}{from}        # VALUE OF $thisline BEFORE $item[$n]
+        $itempos[$n]{line}{to}          # VALUE OF $prevline AFTER $item[$n]
+        $itempos[$n]{column}{from}      # VALUE OF $thiscolumn BEFORE $item[$n]
+        $itempos[$n]{column}{to}        # VALUE OF $prevcolumn AFTER $item[$n]
 
 Note that the various C<$itempos[$n]...{from}> values record the
 appropriate value I<after> any token prefix has been skipped.
 
 Hence, instead of the somewhat tedious and error-prone:
 
-	rule: startcol token1 endcol
-	      startcol token2 endcol
-	      startcol token3 endcol
-			{ print "token1: columns $item[1]
-					      to $item[3]
-			         token2: columns $item[4]
-					      to $item[6]
-			         token3: columns $item[7]
-					      to $item[9]" }
+        rule: startcol token1 endcol
+              startcol token2 endcol
+              startcol token3 endcol
+                        { print "token1: columns $item[1]
+                                              to $item[3]
+                                 token2: columns $item[4]
+                                              to $item[6]
+                                 token3: columns $item[7]
+                                              to $item[9]" }
 
-	startcol: // { $thiscolumn }	# NEED THE // TO STEP PAST TOKEN SEP
-	endcol:      { $prevcolumn }
+        startcol: // { $thiscolumn }    # NEED THE // TO STEP PAST TOKEN SEP
+        endcol:      { $prevcolumn }
 
 it is possible to write:
 
-	rule: token1 token2 token3
-			{ print "token1: columns $itempos[1]{column}{from}
-					      to $itempos[1]{column}{to}
-			         token2: columns $itempos[2]{column}{from}
-					      to $itempos[2]{column}{to}
-			         token3: columns $itempos[3]{column}{from}
-					      to $itempos[3]{column}{to}" }
+        rule: token1 token2 token3
+                        { print "token1: columns $itempos[1]{column}{from}
+                                              to $itempos[1]{column}{to}
+                                 token2: columns $itempos[2]{column}{from}
+                                              to $itempos[2]{column}{to}
+                                 token3: columns $itempos[3]{column}{from}
+                                              to $itempos[3]{column}{to}" }
 
 Note however that (in the current implementation) the use of C<@itempos>
 anywhere in a grammar implies that item positioning information is 
@@ -650,10 +663,10 @@ The value of C<$thisparser> propagates down the subrules of a parse
 but not back up. Hence, you can invoke subrules from another parser
 for the scope of the current rule as follows:
 
-	rule: subrule1 subrule2
-	    | { $thisparser = $::otherparser } <reject>
-	    | subrule3 subrule4
-	    | subrule5
+        rule: subrule1 subrule2
+            | { $thisparser = $::otherparser } <reject>
+            | subrule3 subrule4
+            | subrule5
 
 The result is that the production calls "subrule1" and "subrule2" of
 the current parser, and the remaining productions call the named subrules
@@ -674,7 +687,7 @@ corresponding to the production currently being matched.
 =item C<$score> and C<$score_return>
 
 $score stores the best production score to date, as specified by
-an earlier C<<score:...E<gt>> directive. $score_return stores
+an earlier C<E<lt>score:...E<gt>> directive. $score_return stores
 the corresponding return value for the successful production.
 
 See L<Scored productions>.
@@ -699,13 +712,13 @@ compiled.
 The main use of start-up actions is to declare local variables within the
 parser's special namespace:
 
-	{ my $lastitem = '???'; }
+        { my $lastitem = '???'; }
 
-	list: item(s)	{ $return = $lastitem }
+        list: item(s)   { $return = $lastitem }
 
-	item: book	{ $lastitem = 'book'; }
-	      bell	{ $lastitem = 'bell'; }
-	      candle	{ $lastitem = 'candle'; }
+        item: book      { $lastitem = 'book'; }
+              bell      { $lastitem = 'bell'; }
+              candle    { $lastitem = 'candle'; }
 
 but start-up actions can be used to execute I<any> valid Perl code
 within a parser's special namespace.
@@ -730,39 +743,39 @@ a simple parse tree:
     $::RD_AUTOACTION = q { [@item] };
 
     parser = new Parse::RecDescent (q{
-	expression: and_expr '||' expression | and_expr
-	and_expr:   not_expr '&&' and_expr   | not_expr
-	not_expr:   '!' brack_expr           | brack_expr
-	brack_expr: '(' expression ')'       | identifier
-	identifier: /[a-z]+/i
-	});
+        expression: and_expr '||' expression | and_expr
+        and_expr:   not_expr '&&' and_expr   | not_expr
+        not_expr:   '!' brack_expr           | brack_expr
+        brack_expr: '(' expression ')'       | identifier
+        identifier: /[a-z]+/i
+        });
 
 which is equivalent to:
 
     parser = new Parse::RecDescent (q{
-	expression: and_expr '&&' expression
-			{ [@item] }
-		  | and_expr
-			{ [@item] }
+        expression: and_expr '&&' expression
+                        { [@item] }
+                  | and_expr
+                        { [@item] }
 
-	and_expr:   not_expr '&&' and_expr  
-			{ [@item] }
-		|   not_expr
-			{ [@item] }
+        and_expr:   not_expr '&&' and_expr  
+                        { [@item] }
+                |   not_expr
+                        { [@item] }
 
-	not_expr:   '!' brack_expr          
-			{ [@item] }
-		|   brack_expr
-			{ [@item] }
+        not_expr:   '!' brack_expr          
+                        { [@item] }
+                |   brack_expr
+                        { [@item] }
 
-	brack_expr: '(' expression ')'      
-			{ [@item] }
-		  | identifier
-			{ [@item] }
+        brack_expr: '(' expression ')'      
+                        { [@item] }
+                  | identifier
+                        { [@item] }
 
-	identifier: /[a-z]+/i
-			{ [@item] }
-	});
+        identifier: /[a-z]+/i
+                        { [@item] }
+        });
 
 Alternatively, we could take an object-oriented approach, use different
 classes for each node (and also eliminating redundant intermediate nodes):
@@ -771,35 +784,35 @@ classes for each node (and also eliminating redundant intermediate nodes):
       { $#item==1 ? $item[1] : new ${"$item[0]_node"} (@item[1..$#item]) };
 
     parser = new Parse::RecDescent (q{
-	expression: and_expr '||' expression | and_expr
-	and_expr:   not_expr '&&' and_expr   | not_expr
-	not_expr:   '!' brack_expr           | brack_expr
-	brack_expr: '(' expression ')'       | identifier
-	identifier: /[a-z]+/i
-	});
+        expression: and_expr '||' expression | and_expr
+        and_expr:   not_expr '&&' and_expr   | not_expr
+        not_expr:   '!' brack_expr           | brack_expr
+        brack_expr: '(' expression ')'       | identifier
+        identifier: /[a-z]+/i
+        });
 
 which is equivalent to:
 
     parser = new Parse::RecDescent (q{
-	expression: and_expr '&&' expression
-			{ new expression_node (@item[1..3]) }
-		  | and_expr
+        expression: and_expr '&&' expression
+                        { new expression_node (@item[1..3]) }
+                  | and_expr
 
-	and_expr:   not_expr '&&' and_expr  
-			{ new and_expr_node (@item[1..3]) }
-		|   not_expr
+        and_expr:   not_expr '&&' and_expr  
+                        { new and_expr_node (@item[1..3]) }
+                |   not_expr
 
-	not_expr:   '!' brack_expr          
-			{ new not_expr_node (@item[1..2]) }
-		|   brack_expr
+        not_expr:   '!' brack_expr          
+                        { new not_expr_node (@item[1..2]) }
+                |   brack_expr
 
-	brack_expr: '(' expression ')'      
-			{ new brack_expr_node (@item[1..3]) }
-		  | identifier
+        brack_expr: '(' expression ')'      
+                        { new brack_expr_node (@item[1..3]) }
+                  | identifier
 
-	identifier: /[a-z]+/i
-			{ new identifer_node (@item[1]) }
-	});
+        identifier: /[a-z]+/i
+                        { new identifer_node (@item[1]) }
+        });
 
 Note that, if a production already ends in an action, no autoaction is appended
 to it. For example, in this version:
@@ -808,13 +821,13 @@ to it. For example, in this version:
       { $#item==1 ? $item[1] : new ${"$item[0]_node"} (@item[1..$#item]) };
 
     parser = new Parse::RecDescent (q{
-	expression: and_expr '&&' expression | and_expr
-	and_expr:   not_expr '&&' and_expr   | not_expr
-	not_expr:   '!' brack_expr           | brack_expr
-	brack_expr: '(' expression ')'       | identifier
-	identifier: /[a-z]+/i
-			{ new terminal_node($item[1]) }
-	});
+        expression: and_expr '&&' expression | and_expr
+        and_expr:   not_expr '&&' and_expr   | not_expr
+        not_expr:   '!' brack_expr           | brack_expr
+        brack_expr: '(' expression ')'       | identifier
+        identifier: /[a-z]+/i
+                        { new terminal_node($item[1]) }
+        });
 
 each C<identifier> match produces a C<terminal_node> object, I<not> an
 C<identifier_node> object.
@@ -828,7 +841,7 @@ some production.
 A commonly needed autoaction is one that builds a parse-tree. It is moderately
 tricky to set up such an action (which must treat terminals differently from
 non-terminals), so Parse::RecDescent simplifies the process by providing the
-E<lt>autotreeE<gt> directive.
+C<E<lt>autotreeE<gt>> directive.
 
 If this directive appears at the start of grammar, it causes
 Parse::RecDescent to insert autoactions at the end of any rule except
@@ -838,28 +851,28 @@ of the grammar (i.e. a single pattern or string item).
 
 So, for example, the following grammar:
 
-	<autotree>
+        <autotree>
 
-	file    : command(s)
-	command : get | set | vet
-	get     : 'get' ident ';'
-	set     : 'set' ident 'to' value ';'
-	vet     : 'check' ident 'is' value ';'
-	ident   : /\w+/
-	value   : /\d+/
+        file    : command(s)
+        command : get | set | vet
+        get     : 'get' ident ';'
+        set     : 'set' ident 'to' value ';'
+        vet     : 'check' ident 'is' value ';'
+        ident   : /\w+/
+        value   : /\d+/
 
 is equivalent to:
 
-	file    : command(s)			{ bless \%item, $item[0] }
-	command : get				{ bless \%item, $item[0] }
-		| set				{ bless \%item, $item[0] }
-		| vet				{ bless \%item, $item[0] }
-	get     : 'get' ident ';'		{ bless \%item, $item[0] }
-	set     : 'set' ident 'to' value ';'	{ bless \%item, $item[0] }
-	vet     : 'check' ident 'is' value ';'	{ bless \%item, $item[0] }
+        file    : command(s)                    { bless \%item, $item[0] }
+        command : get                           { bless \%item, $item[0] }
+                | set                           { bless \%item, $item[0] }
+                | vet                           { bless \%item, $item[0] }
+        get     : 'get' ident ';'               { bless \%item, $item[0] }
+        set     : 'set' ident 'to' value ';'    { bless \%item, $item[0] }
+        vet     : 'check' ident 'is' value ';'  { bless \%item, $item[0] }
 
-	ident   : /\w+/		 { bless {__VALUE__=>$item[1]}, $item[0] }
-	value   : /\d+/		 { bless {__VALUE__=>$item[1]}, $item[0] }
+        ident   : /\w+/          { bless {__VALUE__=>$item[1]}, $item[0] }
+        value   : /\d+/          { bless {__VALUE__=>$item[1]}, $item[0] }
 
 Note that each node in the tree is blessed into a class of the same name
 as the rule itself. This makes it easy to build object-oriented
@@ -905,9 +918,9 @@ However, when prototyping a grammar it is sometimes useful to be
 able to use subrules before a proper specification of them is 
 really possible.  For example, a grammar might include a section like:
 
-	function_call: identifier '(' arg(s?) ')'
+        function_call: identifier '(' arg(s?) ')'
 
-	identifier: /[a-z]\w*/i
+        identifier: /[a-z]\w*/i
 
 where the possible format of an argument is sufficiently complex that
 it is not worth specifying in full until the general function call
@@ -915,14 +928,14 @@ syntax has been debugged. In this situation it is convenient to leave
 the real rule C<arg> undefined and just slip in a placeholder (or
 "stub"):
 
-	arg: 'arg'
+        arg: 'arg'
 
 so that the function call syntax can be tested with dummy input such as:
 
-	f0()
-	f1(arg)
-	f2(arg arg)
-	f3(arg arg arg)
+        f0()
+        f1(arg)
+        f2(arg arg)
+        f3(arg arg arg)
 
 et cetera.
 
@@ -932,7 +945,7 @@ If the variable C<$::RD_AUTOSTUB> is defined when a parser is built,
 a subrule reference to any non-existent rule (say, C<sr>),
 causes a "stub" rule of the form:
 
-	sr: 'sr'
+        sr: 'sr'
 
 to be automatically defined in the generated parser.
 A level 1 warning is issued for each such "autostubbed" rule.
@@ -951,7 +964,7 @@ treated as a "look-ahead" request. That means that the current production can
 I<does not consume any of the text being parsed>. This is very similar to the
 C</(?=...)/> look-ahead construct in Perl patterns. Thus, the rule:
 
-	inner_word: word ...word
+        inner_word: word ...word
 
 will match whatever the subrule "word" matches, provided that match is followed
 by some more text which subrule "word" would also match (although this
@@ -961,7 +974,7 @@ Likewise, a "...!" prefix, causes the following item to succeed (without
 consuming any text) if and only if it would normally fail. Hence, a
 rule such as:
 
-	identifier: ...!keyword ...!'_' /[A-Za-z_]\w*/
+        identifier: ...!keyword ...!'_' /[A-Za-z_]\w*/
 
 matches a string of characters which satisfies the pattern
 C</[A-Za-z_]\w*/>, but only if the same sequence of characters would
@@ -970,7 +983,7 @@ not match either subrule "keyword" or the literal token '_'.
 Sequences of look-ahead prefixes accumulate, multiplying their positive and/or
 negative senses. Hence:
 
-	inner_word: word ...!......!word
+        inner_word: word ...!......!word
 
 is exactly equivalent the the original example above (a warning is issued in
 cases like these, since they often indicate something left out, or
@@ -1001,10 +1014,10 @@ C<E<lt>matchruleE<gt>>,
 C<E<lt>leftopE<gt>>,
 C<E<lt>rightopE<gt>>,
 C<E<lt>deferE<gt>>,
-C<E<lt>nocheck<gt>>,
-C<E<lt>perl_quotelike<gt>>,
-C<E<lt>perl_codeblock<gt>>,
-C<E<lt>perl_variable<gt>>,
+C<E<lt>nocheckE<gt>>,
+C<E<lt>perl_quotelikeE<gt>>,
+C<E<lt>perl_codeblockE<gt>>,
+C<E<lt>perl_variableE<gt>>,
 and C<E<lt>tokenE<gt>>.
 
 =over 4
@@ -1016,9 +1029,9 @@ descent of the parse tree to be pruned (or "cut") for efficiency.
 Within a rule, a C<E<lt>commitE<gt>> directive instructs the rule to ignore subsequent
 productions if the current production fails. For example:
 
-	command: 'find' <commit> filename
-	       | 'open' <commit> filename
-	       | 'move' filename filename
+        command: 'find' <commit> filename
+               | 'open' <commit> filename
+               | 'move' filename filename
 
 Clearly, if the leading token 'find' is matched in the first production but that
 production fails for some other reason, then the remaining
@@ -1029,11 +1042,11 @@ command is encountered.
 
 It is also possible to revoke a previous commitment. For example:
 
-	if_statement: 'if' <commit> condition
-				'then' block <uncommit>
-				'else' block
-		    | 'if' <commit> condition
-				'then' block
+        if_statement: 'if' <commit> condition
+                                'then' block <uncommit>
+                                'else' block
+                    | 'if' <commit> condition
+                                'then' block
 
 In this case, a failure to find an "else" block in the first
 production shouldn't preclude trying the second production, but a
@@ -1044,11 +1057,11 @@ C<E<lt>uncommitE<gt>> immediately revokes a preceding C<E<lt>commitE<gt>>
 (even though the production would not otherwise have been tried). For
 example, in the rule:
 
-	request: 'explain' expression
-	       | 'explain' <commit> keyword
-	       | 'save'
-	       | 'quit'
-	       | <uncommit> term '?'
+        request: 'explain' expression
+               | 'explain' <commit> keyword
+               | 'save'
+               | 'quit'
+               | <uncommit> term '?'
 
 if the text being matched was "explain?", and the first two
 productions failed, then the C<E<lt>commitE<gt>> in production two would cause
@@ -1059,7 +1072,7 @@ attempt a match.
 Note in the preceding example, that the C<E<lt>commitE<gt>> was only placed
 in production two. If production one had been:
 
-	request: 'explain' <commit> expression 
+        request: 'explain' <commit> expression 
 
 then production two would be (inappropriately) skipped if a leading
 "explain..." was encountered.
@@ -1077,11 +1090,11 @@ the side effects of the actions in one production, without prejudicing a match
 by some other production later in the rule. For example, to insert
 tracing code into the parse:
 
-	complex_rule: { print "In complex rule...\n"; } <reject>
-		    
-	complex_rule: simple_rule '+' 'i' '*' simple_rule
-		    | 'i' '*' simple_rule
-		    | simple_rule
+        complex_rule: { print "In complex rule...\n"; } <reject>
+                    
+        complex_rule: simple_rule '+' 'i' '*' simple_rule
+                    | 'i' '*' simple_rule
+                    | simple_rule
 
 
 It is also possible to specify a conditional rejection, using the
@@ -1090,10 +1103,10 @@ specified condition is true. This form of rejection is exactly
 equivalent to the action C<{(I<condition>)?undef:1}E<gt>>.
 For example:
 
-	command: save_command
-	       | restore_command
-	       | <reject: defined $::tolerant> { exit }
-	       | <error: Unknown command. Ignored.>
+        command: save_command
+               | restore_command
+               | <reject: defined $::tolerant> { exit }
+               | <error: Unknown command. Ignored.>
 
 A C<E<lt>rejectE<gt>> directive never succeeds (and hence has no
 associated value). A conditional rejection may succeed (if its
@@ -1109,14 +1122,29 @@ C<E<lt>reject:...E<gt>> directives are I<never> "optimized away" in
 this manner, even if they are always guaranteed to fail (for example:
 C<E<lt>reject:1E<gt>>)
 
+Due to the way grammars are parsed, there is a minor restriction on the
+condition of a conditional C<E<lt>reject:...E<gt>>: it cannot
+contain any raw '<' or '>' characters. For example:
 
+        line: cmd <reject: $thiscolumn > max> data
+
+results in an error when a parser is built from this grammar (since the
+grammar parser has no way of knowing whether the first > is a "less than"
+or the end of the C<E<lt>reject:...E<gt>>.
+
+To overcome this problem, put the condition inside a do{} block:
+
+        line: cmd <reject: do{$thiscolumn > max}> data
+
+Note that the same problem may occur in other directives that take
+arguments. The same solution will work in all cases.
 
 =item Skipping between terminals
 
 The C<E<lt>skipE<gt>> directive enables the terminal prefix used in
 a production to be changed. For example:
 
-	OneLiner: Command <skip:'[ \t]*'> Arg(s) /;/
+        OneLiner: Command <skip:'[ \t]*'> Arg(s) /;/
 
 causes only blanks and tabs to be skipped before terminals in the C<Arg>
 subrule (and any of I<its> subrules>, and also before the final C</;/> terminal.
@@ -1127,34 +1155,34 @@ must reset their terminal prefixes individually.
 The C<E<lt>skipE<gt>> directive evaluates to the I<previous> terminal prefix,
 so it's easy to reinstate a prefix later in a production:
 
-	Command: <skip:","> CSV(s) <skip:$item[1]> Modifier
+        Command: <skip:","> CSV(s) <skip:$item[1]> Modifier
 
 The value specified after the colon is interpolated into a pattern, so all of
 the following are equivalent (though their efficiency increases down the list):
 
-	<skip: "$colon|$comma">   # ASSUMING THE VARS HOLD THE OBVIOUS VALUES
+        <skip: "$colon|$comma">   # ASSUMING THE VARS HOLD THE OBVIOUS VALUES
 
-	<skip: ':|,'>
+        <skip: ':|,'>
 
-	<skip: q{[:,]}>
+        <skip: q{[:,]}>
 
-	<skip: qr/[:,]/>
+        <skip: qr/[:,]/>
 
 There is no way of directly setting the prefix for
 an entire rule, except as follows:
 
-	Rule: <skip: '[ \t]*'> Prod1
-	    | <skip: '[ \t]*'> Prod2a Prod2b
-	    | <skip: '[ \t]*'> Prod3
+        Rule: <skip: '[ \t]*'> Prod1
+            | <skip: '[ \t]*'> Prod2a Prod2b
+            | <skip: '[ \t]*'> Prod3
 
 or, better:
 
-	Rule: <skip: '[ \t]*'>
-	    (
-		Prod1
-	      | Prod2a Prod2b
-	      | Prod3
-	    )
+        Rule: <skip: '[ \t]*'>
+            (
+                Prod1
+              | Prod2a Prod2b
+              | Prod3
+            )
 
 
 B<Note: Up to release 1.51 of Parse::RecDescent, an entirely different
@@ -1177,11 +1205,11 @@ C</[^\n]*\n/> followed by the action S<C<{ $return = 0 }>> (except that
 productions beginning with a C<E<lt>resyncE<gt>> are ignored when generating
 error messages). A typical use might be:
 
-	script : command(s)
+        script : command(s)
 
-	command: save_command
-	       | restore_command
-	       | <resync> # TRY NEXT LINE, IF POSSIBLE
+        command: save_command
+               | restore_command
+               | <resync> # TRY NEXT LINE, IF POSSIBLE
 
 It is also possible to explicitly specify a resynchronization
 pattern, using the C<E<lt>resync:I<pattern>E<gt>> variant. This version
@@ -1190,9 +1218,9 @@ parsed text. In other words, C<E<lt>resync:I<pattern>E<gt>> is exactly
 equivalent to the token C</I<pattern>/> (followed by a S<C<{ $return = 0 }>>
 action). For example, if commands were terminated by newlines or semi-colons:
 
-	command: save_command
-	       | restore_command
-	       | <resync:[^;\n]*[;\n]>
+        command: save_command
+               | restore_command
+               | <resync:[^;\n]*[;\n]>
 
 The value of a successfully matched C<E<lt>resyncE<gt>> directive (of either
 type) is the text that it consumed. Note, however, that since the
@@ -1211,9 +1239,9 @@ C<E<lt>errorE<gt>> prepares an error message based on
 the mismatch between the last item expected and the text which cause
 it to fail. For example, given the rule:
 
-	McCoy: curse ',' name ', I'm a doctor, not a' a_profession '!'
-	     | pronoun 'dead,' name '!'
-	     | <error>
+        McCoy: curse ',' name ', I'm a doctor, not a' a_profession '!'
+             | pronoun 'dead,' name '!'
+             | <error>
 
 the following strings would produce the following messages:
 
@@ -1222,12 +1250,12 @@ the following strings would produce the following messages:
 =item "Amen, Jim!"
 
        ERROR (line 1): Invalid McCoy: Expected curse or pronoun
-		       not found
+                       not found
 
 =item "Dammit, Jim, I'm a doctor!"
 
        ERROR (line 1): Invalid McCoy: Expected ", I'm a doctor, not a"
-		       but found ", I'm a doctor!" instead
+                       but found ", I'm a doctor!" instead
 
 =item "He's dead,\n"
 
@@ -1236,12 +1264,12 @@ the following strings would produce the following messages:
 =item "He's alive!"
 
        ERROR (line 1): Invalid McCoy: Expected 'dead,' but found
-		       "alive!" instead
+                       "alive!" instead
 
 =item "Dammit, Jim, I'm a doctor, not a pointy-eared Vulcan!"
 
        ERROR (line 1): Invalid McCoy: Expected a profession but found
-		       "pointy-eared Vulcan!" instead
+                       "pointy-eared Vulcan!" instead
 
 
 =back
@@ -1256,9 +1284,9 @@ grammar).
 If the automatically generated error is not sufficient, it is possible to
 provide an explicit message as part of the error directive. For example:
 
-	Spock: "Fascinating ',' (name | 'Captain') '.'
-	     | "Highly illogical, doctor."
-	     | <error: He never said that!>
+        Spock: "Fascinating ',' (name | 'Captain') '.'
+             | "Highly illogical, doctor."
+             | <error: He never said that!>
 
 which would result in I<all> failures to parse a "Spock" subrule printing the
 following message:
@@ -1269,7 +1297,7 @@ The error message is treated as a "qq{...}" string and interpolated
 when the error is generated (I<not> when the directive is specified!).
 Hence:
 
-	<error: Mystical error near "$text">
+        <error: Mystical error near "$text">
 
 would correctly insert the ambient text string which caused the error.
 
@@ -1279,9 +1307,9 @@ and S<C<E<lt>error: msgE<gt>>> respectively, except that they are
 only triggered if the rule is "committed" at the time they are
 encountered. For example:
 
-	Scotty: "Ya kenna change the Laws of Phusics," <commit> name
-	      | name <commit> ',' 'she's goanta blaw!'
-	      | <error?>
+        Scotty: "Ya kenna change the Laws of Phusics," <commit> name
+              | name <commit> ',' 'she's goanta blaw!'
+              | <error?>
 
 will only generate an error for a string beginning with "Ya kenna
 change the Laws o' Phusics," or a valid name, but which still fails to match the
@@ -1291,7 +1319,7 @@ input), whereas S<C<$parser-E<gt>Scotty("Mr Spock, ah jest kenna do'ut!")>>
 will fail with the error message:
 
        ERROR (line 1): Invalid Scotty: expected 'she's goanta blaw!'
-		       but found 'I jest kenna do'ut!' instead.
+                       but found 'I jest kenna do'ut!' instead.
 
 since in that case the second production would commit after matching
 the leading name.
@@ -1306,11 +1334,11 @@ In order to I<permanently> uncommit the rule before an error message,
 it is necessary to put an explicit C<E<lt>uncommitE<gt>> before the
 C<E<lt>errorE<gt>>. For example:
 
-	line: 'Kirk:'  <commit> Kirk
-	    | 'Spock:' <commit> Spock
-	    | 'McCoy:' <commit> McCoy
-	    | <uncommit> <error?> <reject>
-	    | <resync>
+        line: 'Kirk:'  <commit> Kirk
+            | 'Spock:' <commit> Spock
+            | 'McCoy:' <commit> McCoy
+            | <uncommit> <error?> <reject>
+            | <resync>
 
 
 Error messages generated by the various C<E<lt>error...E<gt>> directives
@@ -1350,9 +1378,9 @@ that case the directive's associated value is zero. Hence, this type
 of error directive I<can> be used before the end of a
 production. For example:
 
-	command: 'do' <commit> something
-	       | 'report' <commit> something
-	       | <error?: Syntax error> <error: Unknown command>
+        command: 'do' <commit> something
+               | 'report' <commit> something
+               | <error?: Syntax error> <error: Unknown command>
 
 
 B<Warning:> The C<E<lt>error?E<gt>> directive does I<not> mean "always fail (but
@@ -1360,15 +1388,15 @@ do so silently unless committed)". It actually means "only fail (and report) if
 committed, otherwise I<succeed>". To achieve the "fail silently if uncommitted"
 semantics, it is necessary to use:
 
-	rule: item <commit> item(s)
-	    | <error?> <reject>	     # FAIL SILENTLY UNLESS COMMITTED
+        rule: item <commit> item(s)
+            | <error?> <reject>      # FAIL SILENTLY UNLESS COMMITTED
 
 However, because people seem to expect a lone C<E<lt>error?E<gt>> directive
 to work like this:
 
-	rule: item <commit> item(s)
-	    | <error?: Error message if committed>
-	    | <error:  Error message if uncommitted>
+        rule: item <commit> item(s)
+            | <error?: Error message if committed>
+            | <error:  Error message if uncommitted>
 
 Parse::RecDescent automatically appends a 
 C<E<lt>rejectE<gt>> directive if the C<E<lt>error?E<gt>> directive
@@ -1425,9 +1453,9 @@ It is occasionally convenient to specify variables which are local
 to a single rule. This may be achieved by including a
 C<E<lt>rulevar:...E<gt>> directive anywhere in the rule. For example:
 
-	markup: <rulevar: $tag>
+        markup: <rulevar: $tag>
 
-	markup: tag {($tag=$item[1]) =~ s/^<|>$//g} body[$tag]
+        markup: tag {($tag=$item[1]) =~ s/^<|>$//g} body[$tag]
 
 The example C<E<lt>rulevar: $tagE<gt>> directive causes a "my" variable named
 C<$tag> to be declared at the start of the subroutine implementing the
@@ -1439,23 +1467,23 @@ C<E<lt>rulevar:I<text>E<gt>> causes a line of the form C<my I<text>;>
 to be added at the beginning of the rule subroutine, immediately after
 the definitions of the following local variables:
 
-	$thisparser	$commit
-	$thisrule	@item
-	$thisline	@arg
-	$text		%arg
+        $thisparser     $commit
+        $thisrule       @item
+        $thisline       @arg
+        $text           %arg
 
 This means that the following C<E<lt>rulevarE<gt>> directives work
 as expected:
 
-	<rulevar: $count = 0 >
+        <rulevar: $count = 0 >
 
-	<rulevar: $firstarg = $arg[0] || '' >
+        <rulevar: $firstarg = $arg[0] || '' >
 
-	<rulevar: $myItems = \@item >
+        <rulevar: $myItems = \@item >
 
-	<rulevar: @context = ( $thisline, $text, @arg ) >
+        <rulevar: @context = ( $thisline, $text, @arg ) >
 
-	<rulevar: ($name,$age) = $arg{"name","age"} >
+        <rulevar: ($name,$age) = $arg{"name","age"} >
 
 
 Note however that, because all such variables are "my" variables, their
@@ -1463,12 +1491,12 @@ values I<do not persist> between match attempts on a given rule. To
 preserve values between match attempts, values can be stored within the
 "local" member of the C<$thisrule> object:
 
-	countedrule: { $thisrule->{"local"}{"count"}++ }
-		     <reject>
-		   | subrule1
-		   | subrule2
-		   | <reject: $thisrule->{"local"}{"count"} == 1>
-		     subrule3
+        countedrule: { $thisrule->{"local"}{"count"}++ }
+                     <reject>
+                   | subrule1
+                   | subrule2
+                   | <reject: $thisrule->{"local"}{"count"} == 1>
+                     subrule3
 
 
 When matching a rule, each C<E<lt>rulevarE<gt>> directive is matched as
@@ -1486,7 +1514,7 @@ for the C<E<lt>rejectE<gt>> directive).
 Because regexes and double-quoted strings are interpolated, it is relatively
 easy to specify productions with "context sensitive" tokens. For example:
 
-	command:  keyword  body  "end $item[1]"
+        command:  keyword  body  "end $item[1]"
 
 which ensures that a command block is bounded by a
 "I<E<lt>keywordE<gt>>...end I<E<lt>same keywordE<gt>>" pair.
@@ -1497,7 +1525,7 @@ identically to a subrule item, except that the rule which is invoked to match
 it is determined by the string specified after the colon. For example, we could
 rewrite the C<command> rule like this:
 
-	command:  keyword  <matchrule:body>  "end $item[1]"
+        command:  keyword  <matchrule:body>  "end $item[1]"
 
 Whatever appears after the colon in the directive is treated as an interpolated
 string (that is, as if it appeared in C<qq{...}> operator) and the value of
@@ -1508,22 +1536,22 @@ C<E<lt>matchrule:...E<gt>> directive is of little interest or benefit.
 The power of directive is seen when we use a string that interpolates
 to something interesting. For example:
 
-	command:	keyword <matchrule:$item[1]_body> "end $item[1]"
+        command:        keyword <matchrule:$item[1]_body> "end $item[1]"
 
-	keyword:	'while' | 'if' | 'function'
+        keyword:        'while' | 'if' | 'function'
 
-	while_body:	condition block
+        while_body:     condition block
 
-	if_body:	condition block ('else' block)(?)
+        if_body:        condition block ('else' block)(?)
 
-	function_body:	arglist block
+        function_body:  arglist block
 
 Now the C<command> rule selects how to proceed on the basis of the keyword
 that is found. It is as if C<command> were declared:
 
-	command:	'while'    while_body    "end while" 
-	       |	'if'       if_body       "end if" 
-	       |	'function' function_body "end function" 
+        command:        'while'    while_body    "end while" 
+               |        'if'       if_body       "end if" 
+               |        'function' function_body "end function" 
 
 
 When a C<E<lt>matchrule:...E<gt>> directive is used as a repeated
@@ -1531,13 +1559,13 @@ subrule, the rule name expression is "late-bound". That is, the name of
 the rule to be called is re-evaluated I<each time> a match attempt is
 made. Hence, the following grammar:
 
-	{ $::species = 'dogs' }
+        { $::species = 'dogs' }
 
-	pair: 	'two' <matchrule:$::species>(s)
+        pair:   'two' <matchrule:$::species>(s)
 
-	dogs:	/dogs/ { $::species = 'cats' }
+        dogs:   /dogs/ { $::species = 'cats' }
 
-	cats:	/cats/
+        cats:   /cats/
 
 will match the string "two dogs cats cats" completely, whereas it will
 only match the string "two dogs dogs dogs" up to the eighth letter. If
@@ -1567,28 +1595,28 @@ removed from the queue, and hence is never executed.
 
 For example, given the grammar:
 
-	sentence: noun trans noun
-		| noun intrans
+        sentence: noun trans noun
+                | noun intrans
 
-	noun:	  'the dog'
-			{ print "$item[1]\t(noun)\n" }
-	    |	  'the meat'
-			{ print "$item[1]\t(noun)\n" }
+        noun:     'the dog'
+                        { print "$item[1]\t(noun)\n" }
+            |     'the meat'
+                        { print "$item[1]\t(noun)\n" }
 
-	trans:	  'ate'
-			{ print "$item[1]\t(transitive)\n" }
+        trans:    'ate'
+                        { print "$item[1]\t(transitive)\n" }
 
-	intrans:  'ate'
-			{ print "$item[1]\t(intransitive)\n" }
-	       |  'barked'
-			{ print "$item[1]\t(intransitive)\n" }
+        intrans:  'ate'
+                        { print "$item[1]\t(intransitive)\n" }
+               |  'barked'
+                        { print "$item[1]\t(intransitive)\n" }
 
 then parsing the sentence C<"the dog ate"> would produce the output:
 
-	the dog	 (noun)
-	ate	 (transitive)
-	the dog  (noun)
-	ate	 (intransitive)
+        the dog  (noun)
+        ate      (transitive)
+        the dog  (noun)
+        ate      (intransitive)
 
 This is because, even though the first production of C<sentence>
 ultimately fails, its initial subrules C<noun> and C<trans> do match,
@@ -1599,26 +1627,26 @@ actions of the subrules C<noun> and C<intrans> to be executed as well.
 On the other hand, if the actions were replaced by C<E<lt>defer:...E<gt>>
 directives:
 
-	sentence: noun trans noun
-		| noun intrans
+        sentence: noun trans noun
+                | noun intrans
 
-	noun:	  'the dog'
-			<defer: print "$item[1]\t(noun)\n" >
-	    |	  'the meat'
-			<defer: print "$item[1]\t(noun)\n" >
+        noun:     'the dog'
+                        <defer: print "$item[1]\t(noun)\n" >
+            |     'the meat'
+                        <defer: print "$item[1]\t(noun)\n" >
 
-	trans:	  'ate'
-			<defer: print "$item[1]\t(transitive)\n" >
+        trans:    'ate'
+                        <defer: print "$item[1]\t(transitive)\n" >
 
-	intrans:  'ate'
-			<defer: print "$item[1]\t(intransitive)\n" >
-	       |  'barked'
-			<defer: print "$item[1]\t(intransitive)\n" >
+        intrans:  'ate'
+                        <defer: print "$item[1]\t(intransitive)\n" >
+               |  'barked'
+                        <defer: print "$item[1]\t(intransitive)\n" >
 
 the output would be:
 
-	the dog	 (noun)
-	ate	 (intransitive)
+        the dog  (noun)
+        ate      (intransitive)
 
 since deferred actions are only executed if they were evaluated in
 a production which ultimately contributes to the successful parse.
@@ -1706,7 +1734,7 @@ the trailing modifiers on the operation (if any); otherwise C<undef>.
 If a quote-like expression is not found, the directive fails with the usual
 C<undef> value.
 
-The C<E<lt>perl_variable<gt>> directive can be used to parse any Perl
+The C<E<lt>perl_variableE<gt>> directive can be used to parse any Perl
 variable: $scalar, @array, %hash, $ref->{field}[$index], etc.
 It does this by calling Text::Balanced::extract_variable().
 
@@ -1714,7 +1742,7 @@ If the directive matches text representing a valid Perl variable
 specification, it returns that text. Otherwise it fails with the usual
 C<undef> value.
 
-The C<E<lt>perl_codeblock<gt>> directive can be used to parse curly-brace-delimited block of Perl code, such as: { $a = 1; f() =~ m/pat/; }.
+The C<E<lt>perl_codeblockE<gt>> directive can be used to parse curly-brace-delimited block of Perl code, such as: { $a = 1; f() =~ m/pat/; }.
 It does this by calling Text::Balanced::extract_codeblock().
 
 If the directive matches text representing a valid Perl code block,
@@ -1739,35 +1767,35 @@ sets the return value for the production to that hash ref.
 The C<E<lt>token:...E<gt>> directive makes it easy to build
 a Parse::RecDescent-compatible lexer in Parse::RecDescent:
 
-	my $lexer = new Parse::RecDescent q
-	{
-		lex:	token(s)
+        my $lexer = new Parse::RecDescent q
+        {
+                lex:    token(s)
 
-		token:	/a\b/			   <token:INDEF>
-		     |  /the\b/			   <token:DEF>
-		     |  /fly\b/			   <token:NOUN,VERB>
-		     |	/[a-z]+/i { lc $item[1] }  <token:ALPHA>
-		     |  <error: Unknown token>
+                token:  /a\b/                      <token:INDEF>
+                     |  /the\b/                    <token:DEF>
+                     |  /fly\b/                    <token:NOUN,VERB>
+                     |  /[a-z]+/i { lc $item[1] }  <token:ALPHA>
+                     |  <error: Unknown token>
 
-	};
+        };
 
 which will eventually be able to be used with a regular Parse::RecDescent
 grammar:
 
-	my $parser = new Parse::RecDescent q
-	{
-		startrule: subrule1 subrule 2
-		
-		# ETC...
-	};
+        my $parser = new Parse::RecDescent q
+        {
+                startrule: subrule1 subrule 2
+                
+                # ETC...
+        };
 
 either with a pre-lexing phase:
 
-	$parser->startrule( $lexer->lex($data) );
+        $parser->startrule( $lexer->lex($data) );
 
 or with a lex-on-demand approach:
 
-	$parser->startrule( sub{$lexer->token(\$data)} );
+        $parser->startrule( sub{$lexer->token(\$data)} );
 
 But at present, only the C<E<lt>token:...E<gt>> directive is
 actually implemented. The rest is vapourware.
@@ -1778,101 +1806,101 @@ One of the commonest requirements when building a parser is to specify
 binary operators. Unfortunately, in a normal grammar, the rules for
 such things are awkward:
 
-	disjunction:	conjunction ('or' conjunction)(s?)
-				{ $return = [ $item[1], @{$item[2]} ] }
+        disjunction:    conjunction ('or' conjunction)(s?)
+                                { $return = [ $item[1], @{$item[2]} ] }
 
-	conjunction:	atom ('and' atom)(s?)
-				{ $return = [ $item[1], @{$item[2]} ] }
+        conjunction:    atom ('and' atom)(s?)
+                                { $return = [ $item[1], @{$item[2]} ] }
 
 or inefficient:
 
-	disjunction:	conjunction 'or' disjunction
-				{ $return = [ $item[1], @{$item[2]} ] }
-		   |	conjunction
-				{ $return = [ $item[1] ] }
+        disjunction:    conjunction 'or' disjunction
+                                { $return = [ $item[1], @{$item[2]} ] }
+                   |    conjunction
+                                { $return = [ $item[1] ] }
 
-	conjunction:	atom 'and' conjunction
-				{ $return = [ $item[1], @{$item[2]} ] }
-		   |	atom
-				{ $return = [ $item[1] ] }
+        conjunction:    atom 'and' conjunction
+                                { $return = [ $item[1], @{$item[2]} ] }
+                   |    atom
+                                { $return = [ $item[1] ] }
 
-and either way is ugly and hard to get right.	
+and either way is ugly and hard to get right.   
 
-The C<<leftop:...E<gt>> and C<<rightop:...E<gt>> directives provide an
-easier way of specifying such operations. Using C<<leftop:...E<gt>> the
+The C<E<lt>leftop:...E<gt>> and C<E<lt>rightop:...E<gt>> directives provide an
+easier way of specifying such operations. Using C<E<lt>leftop:...E<gt>> the
 above examples become:
 
-	disjunction:	<leftop: conjunction 'or' conjunction>
-	conjunction:	<leftop: atom 'and' atom>
+        disjunction:    <leftop: conjunction 'or' conjunction>
+        conjunction:    <leftop: atom 'and' atom>
 
-The C<<leftop:...E<gt>> directive specifies a left-associative binary operator.
+The C<E<lt>leftop:...E<gt>> directive specifies a left-associative binary operator.
 It is specified around three other grammar elements
 (typically subrules or terminals), which match the left operand,
 the operator itself, and the right operand respectively.
 
-A C<<leftop:...E<gt>> directive such as:
+A C<E<lt>leftop:...E<gt>> directive such as:
 
-	disjunction:	<leftop: conjunction 'or' conjunction>
+        disjunction:    <leftop: conjunction 'or' conjunction>
 
 is converted to the following:
 
-	disjunction:	( conjunction ('or' conjunction)(s?)
-				{ $return = [ $item[1], @{$item[2]} ] } )
+        disjunction:    ( conjunction ('or' conjunction)(s?)
+                                { $return = [ $item[1], @{$item[2]} ] } )
 
-In other words, a C<<leftop:...E<gt>> directive matches the left operand followed by zero
+In other words, a C<E<lt>leftop:...E<gt>> directive matches the left operand followed by zero
 or more repetitions of both the operator and the right operand. It then
 flattens the matched items into an anonymous array which becomes the
-(single) value of the entire C<<leftop:...E<gt>> directive.
+(single) value of the entire C<E<lt>leftop:...E<gt>> directive.
 
-For example, an C<<leftop:...E<gt>> directive such as:
+For example, an C<E<lt>leftop:...E<gt>> directive such as:
 
-	output:  <leftop: ident '<<' expr >
+        output:  <leftop: ident '<<' expr >
 
 when given a string such as:
 
-	cout << var << "str" << 3
+        cout << var << "str" << 3
 
 would match, and C<$item[1]> would be set to:
 
-	[ 'cout', 'var', '"str"', '3' ]
+        [ 'cout', 'var', '"str"', '3' ]
 
 In other words:
 
-	output:  <leftop: ident '<<' expr >
+        output:  <leftop: ident '<<' expr >
 
 is equivalent to a left-associative operator:
 
-	output:	 ident					{ $return = [$item[1]]       }
-	      |  ident '<<' expr			{ $return = [@item[1,3]]     }
-	      |  ident '<<' expr '<<' expr		{ $return = [@item[1,3,5]]   }
-	      |  ident '<<' expr '<<' expr '<<' expr	{ $return = [@item[1,3,5,7]] }
-	      #  ...etc...
+        output:  ident                                  { $return = [$item[1]]       }
+              |  ident '<<' expr                        { $return = [@item[1,3]]     }
+              |  ident '<<' expr '<<' expr              { $return = [@item[1,3,5]]   }
+              |  ident '<<' expr '<<' expr '<<' expr    { $return = [@item[1,3,5,7]] }
+              #  ...etc...
 
 
-Similarly, the C<<rightop:...E<gt>> directive takes a left operand, an operator, and a right operand:
+Similarly, the C<E<lt>rightop:...E<gt>> directive takes a left operand, an operator, and a right operand:
 
-	assign:  <rightop: var '=' expr >
+        assign:  <rightop: var '=' expr >
 
 and converts them to:
 
-	assign:	 ( (var '=' {$return=$item[1]})(s?) expr
-				{ $return = [ @{$item[1]}, $item[2] ] } )
+        assign:  ( (var '=' {$return=$item[1]})(s?) expr
+                                { $return = [ @{$item[1]}, $item[2] ] } )
 
 which is equivalent to a right-associative operator:
 
-	assign:	 var				{ $return = [$item[1]]       }
-	      |  var '=' expr			{ $return = [@item[1,3]]     }
-	      |  var '=' var '=' expr		{ $return = [@item[1,3,5]]   }
-	      |  var '=' var '=' var '=' expr	{ $return = [@item[1,3,5,7]] }
-	      #  ...etc...
+        assign:  var                            { $return = [$item[1]]       }
+              |  var '=' expr                   { $return = [@item[1,3]]     }
+              |  var '=' var '=' expr           { $return = [@item[1,3,5]]   }
+              |  var '=' var '=' var '=' expr   { $return = [@item[1,3,5,7]] }
+              #  ...etc...
 
 
-Note that for both the C<<leftop:...E<gt>> and C<<rightop:...E<gt>> directives, the directive does not normally
+Note that for both the C<E<lt>leftop:...E<gt>> and C<E<lt>rightop:...E<gt>> directives, the directive does not normally
 return the operator itself, just a list of the operands involved. This is
 particularly handy for specifying lists:
 
-	list: '(' <leftop: list_item ',' list_item> ')' 
-			{ $return = $item[2] }
+        list: '(' <leftop: list_item ',' list_item> ')' 
+                        { $return = $item[2] }
 
 There is, however, a problem: sometimes the operator is itself significant.
 For example, in a Perl list a comma and a C<=E<gt>> are both
@@ -1880,7 +1908,7 @@ valid separators, but the C<=E<gt>> has additional stringification semantics.
 Hence it's important to know which was used in each case.
 
 To solve this problem the
-C<<leftop:...E<gt>> and C<<rightop:...E<gt>> directives
+C<E<lt>leftop:...E<gt>> and C<E<lt>rightop:...E<gt>> directives
 I<do> return the operator(s) as well, under two circumstances.
 The first case is where the operator is specified as a subrule. In that instance,
 whatever the operator matches is returned (on the assumption that if the operator
@@ -1894,39 +1922,55 @@ is returned).
 
 In other words, given the input:
 
-	( a=>1, b=>2 )
+        ( a=>1, b=>2 )
 
 the specifications:
 
-	list:	   '('  <leftop: list_item separator list_item>  ')' 
+        list:      '('  <leftop: list_item separator list_item>  ')' 
 
-	separator: ',' | '=>'
+        separator: ',' | '=>'
 
 or:
 
-	list:	   '('  <leftop: list_item /(,|=>)/ list_item>  ')' 
+        list:      '('  <leftop: list_item /(,|=>)/ list_item>  ')' 
 
 cause the list separators to be interleaved with the operands in the
 anonymous array in C<$item[2]>:
 
-	[ 'a', '=>', '1', ',', 'b', '=>', '2' ]
+        [ 'a', '=>', '1', ',', 'b', '=>', '2' ]
 
 
 But the following version:
 
-	list:	   '('  <leftop: list_item /,|=>/ list_item>  ')' 
+        list:      '('  <leftop: list_item /,|=>/ list_item>  ')' 
 
 returns only the operators:
 
-	[ 'a', '1', 'b', '2' ]
-	
+        [ 'a', '1', 'b', '2' ]
+        
 Of course, none of the above specifications handle the case of an empty
-list, since the C<<leftop:...E<gt>> and C<<rightop:...E<gt>> directives
+list, since the C<E<lt>leftop:...E<gt>> and C<E<lt>rightop:...E<gt>> directives
 require at least a single right or left operand to match. To specify
 that the operator can match "trivially", 
 it's necessary to add a C<(?)> qualifier to the directive:
 
-	list:	   '('  <leftop: list_item /(,|=>)/ list_item>(?)  ')' 
+        list:      '('  <leftop: list_item /(,|=>)/ list_item>(?)  ')' 
+
+Note that in almost all the above examples, the first and third arguments
+of the C<<leftop:...E<gt>> directive were the same subrule. That is because
+C<<leftop:...E<gt>>'s are frequently used to specify "separated" lists of the
+same type of item. To make such lists easier to specify, the following 
+syntax:
+
+        list:   element(s /,/)
+
+is exactly equivalent to:
+
+        list:   <leftop: element /,/ element>
+
+Note that the separator must be specified as a raw pattern (i.e.
+not a string or subrule).
+        
 
 =item Scored productions
 
@@ -1938,34 +1982,34 @@ not be optimal.
 For example, if you were parsing the sentence "time flies like an arrow",
 you might use a rule like this:
 
-	sentence: verb noun preposition article noun { [@item] }
-		| adjective noun verb article noun   { [@item] }
-		| noun verb preposition article noun { [@item] }
+        sentence: verb noun preposition article noun { [@item] }
+                | adjective noun verb article noun   { [@item] }
+                | noun verb preposition article noun { [@item] }
 
 Each of these productions matches the sentence, but the third one
 is the most likely interpretation. However, if the sentence had been
 "fruit flies like a banana", then the second production is probably
 the right match.
 
-To cater for such situtations, the C<<score:...E<gt>> can be used.
-The directive is equivalent to an unconditional C<<rejectE<gt>>,
+To cater for such situtations, the C<E<lt>score:...E<gt>> can be used.
+The directive is equivalent to an unconditional C<E<lt>rejectE<gt>>,
 except that it allows you to specify a "score" for the current
 production. If that score is numerically greater than the best
 score of any preceding production, the current production is cached for later
 consideration. If no later production matches, then the cached
 production is treated as having matched, and the value of the
-item immediately before its C<<score:...E<gt>> directive is returned as the
+item immediately before its C<E<lt>score:...E<gt>> directive is returned as the
 result.
 
-In other words, by putting a C<<score:...E<gt>> directive at the end of
+In other words, by putting a C<E<lt>score:...E<gt>> directive at the end of
 each production, you can select which production matches using
 criteria other than specification order. For example:
 
-	sentence: verb noun preposition article noun { [@item] } <score: sensible(@item)>
-		| adjective noun verb article noun   { [@item] } <score: sensible(@item)>
-		| noun verb preposition article noun { [@item] } <score: sensible(@item)>
+        sentence: verb noun preposition article noun { [@item] } <score: sensible(@item)>
+                | adjective noun verb article noun   { [@item] } <score: sensible(@item)>
+                | noun verb preposition article noun { [@item] } <score: sensible(@item)>
 
-Now, when each production reaches its respective C<<score:...E<gt>> 
+Now, when each production reaches its respective C<E<lt>score:...E<gt>> 
 directive, the subroutine C<sensible> will be called to evaluate the
 matched items (somehow). Once all productions have been tried, the
 one which C<sensible> scored most highly will be the one that is 
@@ -1980,39 +2024,39 @@ a colon-separated line also contains commas, or vice versa. The grammar
 resolves the ambiguity by selecting the rule that results in the
 fewest fields:
 
-	line: seplist[sep=>',']  <score: -@{$item[1]}>
-	    | seplist[sep=>':']  <score: -@{$item[1]}>
-	    | seplist[sep=>" "]  <score: -@{$item[1]}>
+        line: seplist[sep=>',']  <score: -@{$item[1]}>
+            | seplist[sep=>':']  <score: -@{$item[1]}>
+            | seplist[sep=>" "]  <score: -@{$item[1]}>
 
-	seplist: <skip:""> <leftop: /[^$arg{sep}]*/ "$arg{sep}" /[^$arg{sep}]*/>
+        seplist: <skip:""> <leftop: /[^$arg{sep}]*/ "$arg{sep}" /[^$arg{sep}]*/>
 
-Note the use of negation within the C<<score:...E<gt>> directive
+Note the use of negation within the C<E<lt>score:...E<gt>> directive
 to ensure that the seplist with the most items gets the lowest score.
 
 As the above examples indicate, it is often the case that all productions
-in a rule use exactly the same C<<score:...E<gt>> directive. It is
+in a rule use exactly the same C<E<lt>score:...E<gt>> directive. It is
 tedious to have to repeat this identical directive in every production, so
-Parse::RecDescent also provides the C<<autoscore:...E<gt>> directive. 
+Parse::RecDescent also provides the C<E<lt>autoscore:...E<gt>> directive. 
 
-If an C<<autoscore:...E<gt>> directive appears in any
+If an C<E<lt>autoscore:...E<gt>> directive appears in any
 production of a rule, the code it specifies is used as the scoring
 code for every production of that rule, except productions that already
-end with an explicit C<<score:...E<gt>> directive. Thus the rules above could
+end with an explicit C<E<lt>score:...E<gt>> directive. Thus the rules above could
 be rewritten:
 
-	line: <autoscore: -@{$item[1]}>
-	line: seplist[sep=>','] 
-	    | seplist[sep=>':']
-	    | seplist[sep=>" "]
-	
+        line: <autoscore: -@{$item[1]}>
+        line: seplist[sep=>','] 
+            | seplist[sep=>':']
+            | seplist[sep=>" "]
+        
 
-	sentence: <autoscore: sensible(@item)>
-		| verb noun preposition article noun { [@item] }
-		| adjective noun verb article noun   { [@item] }
-		| noun verb preposition article noun { [@item] }
+        sentence: <autoscore: sensible(@item)>
+                | verb noun preposition article noun { [@item] }
+                | adjective noun verb article noun   { [@item] }
+                | noun verb preposition article noun { [@item] }
 
-Note that the C<<autoscore:...E<gt>> directive itself acts as an
-unconditional C<<rejectE<gt>>, and (like the C<<rulevar:...E<gt>>
+Note that the C<E<lt>autoscore:...E<gt>> directive itself acts as an
+unconditional C<E<lt>rejectE<gt>>, and (like the C<E<lt>rulevar:...E<gt>>
 directive) is pruned at compile-time wherever possible.
 
 
@@ -2023,7 +2067,7 @@ a small number of checks on the grammar it's given. Specifically it checks that
 the grammar is not left-recursive, that there are no "insatiable" constructs of
 the form:
 
-	rule: subrule(s) subrule
+        rule: subrule(s) subrule
 
 and that there are no rules missing (i.e. referred to, but never defined).
 
@@ -2044,11 +2088,11 @@ tested and is ready for release.
 It is occasionally useful to pass data to a subrule which is being invoked. For
 example, consider the following grammar fragment:
 
-	classdecl: keyword decl
+        classdecl: keyword decl
 
-	keyword:   'struct' | 'class';
+        keyword:   'struct' | 'class';
 
-	decl:	   # WHATEVER
+        decl:      # WHATEVER
 
 The C<decl> rule might wish to know which of the two keywords was used
 (since it may affect some aspect of the way the subsequent declaration
@@ -2057,46 +2101,46 @@ pass data into a rule, by placing that data in an I<argument list>
 (that is, in square brackets) immediately after any subrule item in a
 production. Hence, we could pass the keyword to C<decl> as follows:
 
-	classdecl: keyword decl[ $item[1] ]
+        classdecl: keyword decl[ $item[1] ]
 
-	keyword:   'struct' | 'class';
+        keyword:   'struct' | 'class';
 
-	decl:	   # WHATEVER
+        decl:      # WHATEVER
 
 The argument list can consist of any number (including zero!) of comma-separated
 Perl expressions. In other words, it looks exactly like a Perl anonymous
 array reference. For example, we could pass the keyword, the name of the
 surrounding rule, and the literal 'keyword' to C<decl> like so:
 
-	classdecl: keyword decl[$item[1],$item[0],'keyword']
+        classdecl: keyword decl[$item[1],$item[0],'keyword']
 
-	keyword:   'struct' | 'class';
+        keyword:   'struct' | 'class';
 
-	decl:	   # WHATEVER
+        decl:      # WHATEVER
 
 Within the rule to which the data is passed (C<decl> in the above examples)
 that data is available as the elements of a local variable C<@arg>. Hence
 C<decl> might report its intentions as follows:
 
-	classdecl: keyword decl[$item[1],$item[0],'keyword']
+        classdecl: keyword decl[$item[1],$item[0],'keyword']
 
-	keyword:   'struct' | 'class';
+        keyword:   'struct' | 'class';
 
-	decl:	   { print "Declaring $arg[0] (a $arg[2])\n";
-		     print "(this rule called by $arg[1])" }
+        decl:      { print "Declaring $arg[0] (a $arg[2])\n";
+                     print "(this rule called by $arg[1])" }
 
 Subrule argument lists can also be interpreted as hashes, simply by using
 the local variable C<%arg> instead of C<@arg>. Hence we could rewrite the
 previous example:
 
-	classdecl: keyword decl[keyword => $item[1],
-				caller  => $item[0],
-				type    => 'keyword']
+        classdecl: keyword decl[keyword => $item[1],
+                                caller  => $item[0],
+                                type    => 'keyword']
 
-	keyword:   'struct' | 'class';
+        keyword:   'struct' | 'class';
 
-	decl:	   { print "Declaring $arg{keyword} (a $arg{type})\n";
-		     print "(this rule called by $arg{caller})" }
+        decl:      { print "Declaring $arg{keyword} (a $arg{type})\n";
+                     print "(this rule called by $arg{caller})" }
 
 Both C<@arg> and C<%arg> are always available, so the grammar designer may
 choose whichever convention (or combination of conventions) suits best.
@@ -2105,27 +2149,27 @@ Subrule argument lists are also useful for creating "rule templates"
 (especially when used in conjunction with the C<E<lt>matchrule:...E<gt>>
 directive). For example, the subrule:
 
-	list: 	  <matchrule:$arg{rule}> /$arg{sep}/ list[%arg]
-			{ $return = [ $item[1], @{$item[3]} ] }
-	    | 	  <matchrule:$arg{rule}>
-			{ $return = [ $item[1]] }
+        list:     <matchrule:$arg{rule}> /$arg{sep}/ list[%arg]
+                        { $return = [ $item[1], @{$item[3]} ] }
+            |     <matchrule:$arg{rule}>
+                        { $return = [ $item[1]] }
 
 is a handy template for the common problem of matching a separated list.
 For example:
 
-	function: 'func' name '(' list[rule=>'param',sep=>';'] ')'
+        function: 'func' name '(' list[rule=>'param',sep=>';'] ')'
 
-	param:	  list[rule=>'name',sep=>','] ':' typename
+        param:    list[rule=>'name',sep=>','] ':' typename
 
-	name:	  /\w+/
+        name:     /\w+/
 
-	typename: name
+        typename: name
 
 
 When a subrule argument list is used with a repeated subrule, the argument list
 goes I<before> the repetition specifier:
 
-	list:	/some|many/ thing[ $item[1] ](s)
+        list:   /some|many/ thing[ $item[1] ](s)
 
 The argument list is "late bound". That is, it is re-evaluated for every
 repetition of the repeated subrule.
@@ -2134,11 +2178,11 @@ passed a completely different set of arguments if the value of the
 expression in the argument list changes between attempts. So, for
 example, the grammar:
 
-	{ $::species = 'dogs' }
+        { $::species = 'dogs' }
 
-	pair: 	'two' animal[$::species](s)
+        pair:   'two' animal[$::species](s)
 
-	animal:	/$arg[0]/ { $::species = 'cats' }
+        animal: /$arg[0]/ { $::species = 'cats' }
 
 will match the string "two dogs cats cats" completely, whereas
 it will only match the string "two dogs dogs dogs" up to the
@@ -2149,26 +2193,26 @@ attempted), one would expect the matching behaviours to be reversed.
 Of course, it is possible to effectively "early bind" such argument lists
 by passing them a value which does not change on each repetition. For example:
 
-	{ $::species = 'dogs' }
+        { $::species = 'dogs' }
 
-	pair: 	'two' { $::species } animal[$item[2]](s)
+        pair:   'two' { $::species } animal[$item[2]](s)
 
-	animal:	/$arg[0]/ { $::species = 'cats' }
+        animal: /$arg[0]/ { $::species = 'cats' }
 
 
 Arguments can also be passed to the start rule, simply by appending them
 to the argument list with which the start rule is called (I<after> the
 "line number" parameter). For example, given:
 
-	$parser = new Parse::RecDescent ( $grammar );
+        $parser = new Parse::RecDescent ( $grammar );
 
-	$parser->data($text, 1, "str", 2, \@arr);
+        $parser->data($text, 1, "str", 2, \@arr);
 
-	#             ^^^^^  ^  ^^^^^^^^^^^^^^^
-	#               |    |         |
-	# TEXT TO BE PARSED  |         |
-	# STARTING LINE NUMBER         |
-	# ELEMENTS OF @arg WHICH IS PASSED TO RULE data
+        #             ^^^^^  ^  ^^^^^^^^^^^^^^^
+        #               |    |         |
+        # TEXT TO BE PARSED  |         |
+        # STARTING LINE NUMBER         |
+        # ELEMENTS OF @arg WHICH IS PASSED TO RULE data
 
 then within the productions of the rule C<data>, the array C<@arg> will contain
 C<("str", 2, \@arr)>.
@@ -2180,7 +2224,7 @@ Alternations are implicit (unnamed) rules defined as part of a production. An
 alternation is defined as a series of '|'-separated productions inside a
 pair of round brackets. For example:
 
-	character: 'the' ( good | bad | ugly ) /dude/
+        character: 'the' ( good | bad | ugly ) /dude/
 
 Every alternation implicitly defines a new subrule, whose
 automatically-generated name indicates its origin:
@@ -2189,41 +2233,41 @@ values of <I>, <P>, and <R>. A call to this implicit subrule is then
 inserted in place of the brackets. Hence the above example is merely a
 convenient short-hand for:
 
-	character: 'the'
-		   _alternation_1_of_production_1_of_rule_character
-		   /dude/
+        character: 'the'
+                   _alternation_1_of_production_1_of_rule_character
+                   /dude/
 
-	_alternation_1_of_production_1_of_rule_character:
-		   good | bad | ugly
+        _alternation_1_of_production_1_of_rule_character:
+                   good | bad | ugly
 
 Since alternations are parsed by recursively calling the parser generator, 
 any type(s) of item can appear in an alternation. For example:
 
-	character: 'the' ( 'high' "plains"	# Silent, with poncho
-			 | /no[- ]name/ 	# Silent, no poncho
-			 | vengeance_seeking	# Poncho-optional
-			 | <error>		
-			 ) drifter
+        character: 'the' ( 'high' "plains"      # Silent, with poncho
+                         | /no[- ]name/         # Silent, no poncho
+                         | vengeance_seeking    # Poncho-optional
+                         | <error>              
+                         ) drifter
 
 In this case, if an error occurred, the automatically generated
 message would be:
 
-	ERROR (line <N>): Invalid implicit subrule: Expected
-			  'high' or /no[- ]name/ or generic,
-			  but found "pacifist" instead
+        ERROR (line <N>): Invalid implicit subrule: Expected
+                          'high' or /no[- ]name/ or generic,
+                          but found "pacifist" instead
 
 Since every alternation actually has a name, it's even possible
 to extend or replace them:
 
-	parser->Replace(
-		"_alternation_1_of_production_1_of_rule_character:
-			'generic Eastwood'"
-			);
+        parser->Replace(
+                "_alternation_1_of_production_1_of_rule_character:
+                        'generic Eastwood'"
+                        );
 
 More importantly, since alternations are a form of subrule, they can be given
 repetition specifiers:
 
-	character: 'the' ( good | bad | ugly )(?) /dude/
+        character: 'the' ( good | bad | ugly )(?) /dude/
 
 
 =head2 Incremental Parsing
@@ -2237,8 +2281,8 @@ C<Parse::RecDescent::Extend> interprets the grammar specification and adds any
 productions it finds to the end of the rules for which they are specified. For
 example:
 
-	$add = "name: 'Jimmy-Bob' | 'Bobby-Jim'\ndesc: colour /necks?/";
-	parser->Extend($add);
+        $add = "name: 'Jimmy-Bob' | 'Bobby-Jim'\ndesc: colour /necks?/";
+        parser->Extend($add);
 
 adds two productions to the rule "name" (creating it if necessary) and one
 production to the rule "desc".
@@ -2247,32 +2291,32 @@ C<Parse::RecDescent::Replace> is identical, except that it first resets are
 rule specified in the additional grammar, removing any existing productions.
 Hence after:
 
-	$add = "name: 'Jimmy-Bob' | 'Bobby-Jim'\ndesc: colour /necks?/";
-	parser->Replace($add);
+        $add = "name: 'Jimmy-Bob' | 'Bobby-Jim'\ndesc: colour /necks?/";
+        parser->Replace($add);
 
 are are I<only> valid "name"s and the one possible description.
 
 A more interesting use of the C<Extend> and C<Replace> methods is to call them
 inside the action of an executing parser. For example:
 
-	typedef: 'typedef' type_name identifier ';'
-		       { $thisparser->Extend("type_name: '$item[3]'") }
-	       | <error>
+        typedef: 'typedef' type_name identifier ';'
+                       { $thisparser->Extend("type_name: '$item[3]'") }
+               | <error>
 
-	identifier: ...!type_name /[A-Za-z_]w*/
+        identifier: ...!type_name /[A-Za-z_]w*/
 
 which automatically prevents type names from being typedef'd, or:
 
-	command: 'map' key_name 'to' abort_key
-		       { $thisparser->Replace("abort_key: '$item[2]'") }
-	       | 'map' key_name 'to' key_name
-		       { map_key($item[2],$item[4]) }
-	       | abort_key
-		       { exit if confirm("abort?") }
+        command: 'map' key_name 'to' abort_key
+                       { $thisparser->Replace("abort_key: '$item[2]'") }
+               | 'map' key_name 'to' key_name
+                       { map_key($item[2],$item[4]) }
+               | abort_key
+                       { exit if confirm("abort?") }
 
-	abort_key: 'q'
+        abort_key: 'q'
 
-	key_name: ...!abort_key /[A-Za-z]/
+        key_name: ...!abort_key /[A-Za-z]/
 
 which allows the user to change the abort key binding, but not to unbind it.
 
@@ -2286,13 +2330,13 @@ large grammars.
 In such cases, the judicious use of an interpolated regex is likely to
 be far more efficient:
 
-	typedef: 'typedef' type_name/ identifier ';'
-		       { $thisparser->{local}{type_name} .= "|$item[3]" }
-	       | <error>
+        typedef: 'typedef' type_name/ identifier ';'
+                       { $thisparser->{local}{type_name} .= "|$item[3]" }
+               | <error>
 
-	identifier: ...!type_name /[A-Za-z_]w*/
+        identifier: ...!type_name /[A-Za-z_]w*/
 
-	type_name: /$thisparser->{local}{type_name}/
+        type_name: /$thisparser->{local}{type_name}/
 
 
 =head2 Precompiling parsers
@@ -2313,15 +2357,15 @@ For example, to precompile a grammar stored in the scalar $grammar,
 and produce a class named PreGrammar in a module file named PreGrammar.pm,
 you could use:
 
-	use Parse::RecDescent;
+        use Parse::RecDescent;
 
-	Parse::RecDescent->Precompile($grammar, "PreGrammar");
+        Parse::RecDescent->Precompile($grammar, "PreGrammar");
 
 The first argument is the grammar string, the second is the name of the class
 to be built. The name of the module file is generated automatically by
 appending ".pm" to the last element of the class name. Thus
 
-	Parse::RecDescent->Precompile($grammar, "My::New::Parser");
+        Parse::RecDescent->Precompile($grammar, "My::New::Parser");
 
 would produce a module file named Parser.pm.
 
@@ -2332,7 +2376,7 @@ magic that allows you to do the job directly from the command-line.
 If your grammar is specified in a file named F<grammar>, you can generate
 a class named Yet::Another::Grammar like so:
 
-	> perl -MParse::RecDescent - grammar Yet::Another::Grammar
+        > perl -MParse::RecDescent - grammar Yet::Another::Grammar
 
 This would produce a file named F<Grammar.pm> containing the full
 definition of a class called Yet::Another::Grammar. Of course, to use
@@ -2343,24 +2387,24 @@ Having created the new class, it's very easy to use it to build
 a parser. You simply C<use> the new module, and then call its
 C<new> method to create a parser object. For example:
 
-	use Yet::Another::Grammar;
-	my $parser = Yet::Another::Grammar->new();
+        use Yet::Another::Grammar;
+        my $parser = Yet::Another::Grammar->new();
 
 The effect of these two lines is exactly the same as:
 
-	use Parse::RecDescent;
+        use Parse::RecDescent;
 
-	open GRAMMAR_FILE, "grammar" or die;
-	local $/;
-	my $grammar = <GRAMMAR_FILE>;
+        open GRAMMAR_FILE, "grammar" or die;
+        local $/;
+        my $grammar = <GRAMMAR_FILE>;
 
-	my $parser = Parse::RecDescent->new($grammar);
+        my $parser = Parse::RecDescent->new($grammar);
 
 only considerably faster.
 
 Note however that the parsers produced by either approach are exactly
-the same, so whilst precompilation has an effect on E<set-up> speed,
-it has no effect on E<parsing> speed. RecDescent 2.0 will address that
+the same, so whilst precompilation has an effect on I<set-up> speed,
+it has no effect on I<parsing> speed. RecDescent 2.0 will address that
 problem.
 
 
@@ -2378,52 +2422,52 @@ C<Parse::RecDescent::new> (specified in the C<Parse::RecDescent> grammar format!
  production : items(s) 
 
  item       : lookahead(?) simpleitem
-	    | directive
-	    | comment
+            | directive
+            | comment
 
- lookahead  : '...' | '...!'		       # +'ve or -'ve lookahead
+ lookahead  : '...' | '...!'                   # +'ve or -'ve lookahead
  
- simpleitem : subrule args(?)		       # match another rule
-	    | repetition		       # match repeated subrules
-	    | terminal			       # match the next input
-	    | bracket args(?)		       # match alternative items
-	    | action			       # do something
+ simpleitem : subrule args(?)                  # match another rule
+            | repetition                       # match repeated subrules
+            | terminal                         # match the next input
+            | bracket args(?)                  # match alternative items
+            | action                           # do something
 
- subrule    : identifier		       # the name of the rule
+ subrule    : identifier                       # the name of the rule
 
- args	    : {extract_codeblock($text,'[]')}  # just like a [...] array ref
+ args       : {extract_codeblock($text,'[]')}  # just like a [...] array ref
 
  repetition : subrule args(?) howoften
 
- howoften   : '(?)'			       # 0 or 1 times
-	    | '(s?)'			       # 0 or more times
-	    | '(s)'			       # 1 or more times
-	    | /(\d+)[.][.](/\d+)/	       # $1 to $2 times
-	    | /[.][.](/\d*)/		       # at most $1 times
-	    | /(\d*)[.][.])/		       # at least $1 times
+ howoften   : '(?)'                            # 0 or 1 times
+            | '(s?)'                           # 0 or more times
+            | '(s)'                            # 1 or more times
+            | /(\d+)[.][.](/\d+)/              # $1 to $2 times
+            | /[.][.](/\d*)/                   # at most $1 times
+            | /(\d*)[.][.])/                   # at least $1 times
 
- terminal   : /[/]([\][/]|[^/])*[/]/	       # interpolated pattern
-	    | /"([\]"|[^"])*"/		       # interpolated literal
-	    | /'([\]'|[^'])*'/		       # uninterpolated literal
+ terminal   : /[/]([\][/]|[^/])*[/]/           # interpolated pattern
+            | /"([\]"|[^"])*"/                 # interpolated literal
+            | /'([\]'|[^'])*'/                 # uninterpolated literal
 
  action     : { extract_codeblock($text) }     # embedded Perl code
 
  bracket    : '(' Item(s) production(s?) ')'   # alternative subrules
 
- directive  : '<commit>'		       # commit to production
-	    | '<uncommit>'		       # cancel commitment
-	    | '<resync>'		       # skip to newline
-	    | '<resync:' pattern '>'	       # skip <pattern>
-	    | '<reject>'		       # fail this production
-	    | '<reject:' condition '>'	       # fail if <condition>
-	    | '<error>'			       # report an error
-	    | '<error:' string '>'             # report error as "<string>"
-	    | '<error?>'		       # error only if committed
-	    | '<error?:' string '>'            #   "    "    "    "
-	    | '<rulevar:' /[^>]+/ '>'          # define rule-local variable
-	    | '<matchrule:' string '>' 	       # invoke rule named in string
+ directive  : '<commit>'                       # commit to production
+            | '<uncommit>'                     # cancel commitment
+            | '<resync>'                       # skip to newline
+            | '<resync:' pattern '>'           # skip <pattern>
+            | '<reject>'                       # fail this production
+            | '<reject:' condition '>'         # fail if <condition>
+            | '<error>'                        # report an error
+            | '<error:' string '>'             # report error as "<string>"
+            | '<error?>'                       # error only if committed
+            | '<error?:' string '>'            #   "    "    "    "
+            | '<rulevar:' /[^>]+/ '>'          # define rule-local variable
+            | '<matchrule:' string '>'         # invoke rule named in string
 
- identifier : /[a-z]\w*/i		       # must start with alpha
+ identifier : /[a-z]\w*/i                      # must start with alpha
 
  comment    : /#[^\n]*/                        # same as Perl
 
@@ -2432,7 +2476,7 @@ C<Parse::RecDescent::new> (specified in the C<Parse::RecDescent> grammar format!
  condition  : {extract_codeblock($text,'{<')}  # full Perl expression
 
  string     : {extract_variable($text)}        # any Perl variable
-	    | {extract_quotelike($text)}       #   or quotelike string
+            | {extract_quotelike($text)}       #   or quotelike string
             | {extract_bracketed($text,'<')}   #   or balanced brackets
 
 
@@ -2445,12 +2489,12 @@ make on a regular basis.
 
 A common mistake when using error messages is to write the grammar like this:
 
-	file: line(s)
+        file: line(s)
 
-	line: line_type_1
-	    | line_type_2
-	    | line_type_3
-	    | <error>
+        line: line_type_1
+            | line_type_2
+            | line_type_3
+            | <error>
 
 The expectation seems to be that any line that is not of type 1, 2 or 3 will
 invoke the C<E<lt>errorE<gt>> directive and thereby cause the parse to fail.
@@ -2463,14 +2507,14 @@ subsequent failures in the C<line> rule are quietly ignored.
 
 Typically what's really needed is this:
 
-	file: line(s) eofile    { $return = $item[1] }
+        file: line(s) eofile    { $return = $item[1] }
 
-	line: line_type_1
-	    | line_type_2
-	    | line_type_3
-	    | <error>
+        line: line_type_1
+            | line_type_2
+            | line_type_3
+            | <error>
 
-	eofile: /^\Z/
+        eofile: /^\Z/
 
 The addition of the C<eofile> subrule  to the first production means that
 a file only matches a series of successful C<line> matches I<that consume the
@@ -2484,7 +2528,7 @@ C</^\cZ/> or C</^\cD/> (end-of-file).
 And don't forget the action at the end of the production. If you just 
 write:
 
-	file: line(s) eofile    
+        file: line(s) eofile    
 
 then the value returned by the C<file> rule will be the value of its
 last item: C<eofile>. Since C<eofile> always returns an empty string
@@ -2492,14 +2536,14 @@ on success, that will cause the C<file> rule to return that empty
 string. Apart from returning the wrong value, returning an empty string
 will trip up code such as:
 
-	$parser->file($filetext) || die;
+        $parser->file($filetext) || die;
 
 (since "" is false). 
 
 Remember that Parse::RecDescent returns undef on failure,
 so the only safe test for failure is:
 
-	defined($parser->file($filetext)) || die;
+        defined($parser->file($filetext)) || die;
 
 
 =head1 DIAGNOSTICS
@@ -2529,7 +2573,7 @@ Lookahead used in the wrong place or in a nonsensical way (fatal error).
 
 =item *
 
-Missing or extra components in a C<<leftopE<gt>> or C<<rightopE<gt>>
+Missing or extra components in a C<E<lt>leftopE<gt>> or C<E<lt>rightopE<gt>>
 directive.
 
 =item *
@@ -2562,7 +2606,7 @@ such rules I<can> still be used as subrules).
 
 =item *
 
-Productions which consist of a single C<E<lt>error?<gt>>
+Productions which consist of a single C<E<lt>error?E<gt>>
 directive, and which therefore may succeed unexpectedly
 (a level 2 warning, since this might conceivably be the desired effect).
 
@@ -2642,7 +2686,7 @@ Repetitions are "incorrigibly greedy" in that they will eat everything they can
 and won't backtrack if that behaviour causes a production to fail needlessly.
 So, for example:
 
-	rule: subrule(s) subrule
+        rule: subrule(s) subrule
 
 will I<never> succeed, because the repetition will eat all the
 subrules it finds, leaving none to match the second item. Such
@@ -2650,9 +2694,9 @@ constructions are relatively rare (and C<Parse::RecDescent::new> generates a
 warning whenever they occur) so this may not be a problem, especially
 since the insatiable behaviour can be overcome "manually" by writing:
 
-	rule: penultimate_subrule(s) subrule
+        rule: penultimate_subrule(s) subrule
 
-	penultimate_subrule: subrule ...subrule
+        penultimate_subrule: subrule ...subrule
 
 The issue is that this construction is exactly twice as expensive as the
 original, whereas backtracking would add only 1/I<N> to the cost (for
@@ -2666,9 +2710,9 @@ Having opened that can of worms, it's also necessary to consider whether there
 is a need for non-greedy repetition specifiers. Again, it's possible (at some
 cost) to manually provide the required functionality:
 
-	rule: nongreedy_subrule(s) othersubrule
+        rule: nongreedy_subrule(s) othersubrule
 
-	nongreedy_subrule: subrule ...!othersubrule
+        nongreedy_subrule: subrule ...!othersubrule
 
 Overall, the issue is whether the benefit of this extra functionality
 outweighs the drawbacks of further complicating the (currently
@@ -2680,25 +2724,25 @@ into the generated parsers.
 An C<E<lt>autocommitE<gt>> directive would be nice. That is, it would be useful to be
 able to say:
 
-	command: <autocommit>
-	command: 'find' name
-	       | 'find' address
-	       | 'do' command 'at' time 'if' condition
-	       | 'do' command 'at' time
-	       | 'do' command
-	       | unusual_command
+        command: <autocommit>
+        command: 'find' name
+               | 'find' address
+               | 'do' command 'at' time 'if' condition
+               | 'do' command 'at' time
+               | 'do' command
+               | unusual_command
 
 and have the generator work out that this should be "pruned" thus:
 
-	command: 'find' name
-	       | 'find' <commit> address
-	       | 'do' <commit> command <uncommit>
-			'at' time
-			'if' <commit> condition
-	       | 'do' <commit> command <uncommit>
-			'at' <commit> time
-	       | 'do' <commit> command
-	       | unusual_command
+        command: 'find' name
+               | 'find' <commit> address
+               | 'do' <commit> command <uncommit>
+                        'at' time
+                        'if' <commit> condition
+               | 'do' <commit> command <uncommit>
+                        'at' <commit> time
+               | 'do' <commit> command
+               | unusual_command
 
 There are several issues here. Firstly, should the
 C<E<lt>autocommitE<gt>> automatically install an C<E<lt>uncommitE<gt>>

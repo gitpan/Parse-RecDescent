@@ -3,14 +3,13 @@
 use Parse::RecDescent;
 
 $grammar = q {
-		list: 	  <matchrule:$arg{rule}> /$arg{sep}/ list[@arg]
-				{ $return = [ $item[1], @{$item[3]} ] }
-		    | 	  <matchrule:$arg{rule}>
-				{ $return = [ $item[1]] }
+		list: 	  <leftop: <matchrule:$arg{rule}> /$arg{sep}/ <matchrule:$arg{rule}> >
 
 		function: 'func' ident '(' list[rule=>'param',sep=>';'] ')'
+				{{ name=>$item{ident}, param=>$item{list} }}
 
 		param:	  list[rule=>'ident',sep=>','] ':' typename
+				{{ vars=>$item{list}, type=>$item{typename} }}
 
 		ident:	  /\w+/
 
@@ -24,12 +23,8 @@ unless( $parser = new Parse::RecDescent( $grammar ))
 
 while (defined($input = <DATA>))
 {
-	print STDERR "parsing... ";
-	unless( defined $parser->function( $input ))
-	{
-	    die "error in input; bailing\n";
-	}
-	print STDERR "parsed\n";
+	use Data::Dumper;
+	print Data::Dumper->Dump([$parser->function( $input )]);
 }
 
 __DATA__
