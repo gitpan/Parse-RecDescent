@@ -371,3 +371,27 @@ Revision history for Perl extension Parse::RecDescent.
 	- Added positional entries for %item (see documentation)
 
 	- Fixed bug with (missing) start actions under precompiler (thanks Theo)
+
+
+1.78	Mon Mar 20 12:03:17 2000
+
+        - Fixed error messages and documentation for
+          Parse::RecDescent::Precompile (thanks Jim)
+
+        - Moved demos to /demo subdirectory
+
+        - Added tutorial in /tutorial subdirectory
+
+        - Added <autotree> directive
+
+	- Added (s /sep/) notation (thanks Greg)
+
+	- Circumvented \G and /gc calamities
+
+        - Added more comprehensible error message when parser invoked
+          through non-existent startrule (thanks Jeff)
+
+	- Fixed serious bug with creating new parsers after existing
+	  ones had failed. (Thanks Paul)
+
+	- Fixed problem with nested implicit subrules (thanks Marc).

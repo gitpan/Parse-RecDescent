@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.77 of Parse::RecDescent,
-released November 22, 1999.
+This document describes version 1.78 of Parse::RecDescent,
+released March 20, 2000.
 
 =head1 SYNOPSIS
 
@@ -132,8 +132,11 @@ looks like this:
 
 	defined $parser->startrule($text) or print "Bad text!\n";
 
+The rule through which parsing is initiated must be explicitly defined
+in the grammar (i.e. for the above example, the grammar must include a
+rule of the form: "startrule: <subrules>".
 
-If the rule through which parsing is initiated succeeds, its value (see below)
+If the starting rule succeeds, its value (see below)
 is returned. Failure to generate the original parser or failure to match a text
 is indicated by returning C<undef>. Note that it's easy to set up grammars
 that can succeed, but which return a value of 0, "0", or "".  So don't be
@@ -829,8 +832,9 @@ E<lt>autotreeE<gt> directive.
 
 If this directive appears at the start of grammar, it causes
 Parse::RecDescent to insert autoactions at the end of any rule except
-those which already end in an action, or those which consist of a
-single terminal (i.e. a single pattern or string item).
+those which already end in an action. The action inserted depends on whether
+the production is an intermediate rule (two or more items), or a terminal
+of the grammar (i.e. a single pattern or string item).
 
 So, for example, the following grammar:
 
@@ -857,33 +861,33 @@ is equivalent to:
 	ident   : /\w+/		 { bless {__VALUE__=>$item[1]}, $item[0] }
 	value   : /\d+/		 { bless {__VALUE__=>$item[1]}, $item[0] }
 
-Note that each node in the tree is blessed into a class of the
-same name as the rule itself. This makes it easy to build object-oriented
+Note that each node in the tree is blessed into a class of the same name
+as the rule itself. This makes it easy to build object-oriented
 processors for the parse-trees that the grammar produces. Note too that
-the last two rules produce special objects with the single attribute '__VALUE__'.
-This is because they consist solely of a single terminal.
+the last two rules produce special objects with the single attribute
+'__VALUE__'. This is because they consist solely of a single terminal.
 
 This autoaction-ed grammar would then produce a parse tree in a data
 structure like this:
 
-	{
+        {
           file => {
                     command => {
-				 [ get => {
-					    identifier => { __VALUE__ => 'a' },
-					  },
-		                   set => {
-					    identifier => { __VALUE__ => 'b' },
+                                 [ get => {
+                                            identifier => { __VALUE__ => 'a' },
+                                          },
+                                   set => {
+                                            identifier => { __VALUE__ => 'b' },
                                             value      => { __VALUE__ => '7' },
-					  },
-		                   vet => {
-					    identifier => { __VALUE__ => 'b' },
-					    value      => { __VALUE__ => '7' },
-					  },
-		                  ],
-		               },
-	          }
-	}
+                                          },
+                                   vet => {
+                                            identifier => { __VALUE__ => 'b' },
+                                            value      => { __VALUE__ => '7' },
+                                          },
+                                  ],
+                               },
+                  }
+        }
 
 (except, of course, that each nested hash would also be blessed into
 the appropriate class).
@@ -2306,29 +2310,27 @@ to create clones of the original parser.
 
 A grammar may be precompiled using the C<Precompile> class method.
 For example, to precompile a grammar stored in the scalar $grammar,
-and produce a class (and module) named PreGrammar, you could use:
+and produce a class named PreGrammar in a module file named PreGrammar.pm,
+you could use:
 
 	use Parse::RecDescent;
 
-	Parse::RecDescent->Precompile($grammar,
-				      "PreGrammar",
-				      "PreGrammar.pm");
+	Parse::RecDescent->Precompile($grammar, "PreGrammar");
 
 The first argument is the grammar string, the second is the name of the class
-to be built, and the third is the name of the file in which the class is
-to be generated. For example, if the module should be installed as
-Grammar::Example::Two you might write:
+to be built. The name of the module file is generated automatically by
+appending ".pm" to the last element of the class name. Thus
 
-	Parse::RecDescent->Precompile($grammar,
-				      "Grammar::Example::Two",
-				      "/lib/perl5/Grammar/Example/Two.pm");
+	Parse::RecDescent->Precompile($grammar, "My::New::Parser");
+
+would produce a module file named Parser.pm.
 
 It is somewhat tedious to have to write a small Perl program just to 
 generate a precompiled grammar class, so Parse::RecDescent has some special
 magic that allows you to do the job directly from the command-line.
 
 If your grammar is specified in a file named F<grammar>, you can generate
-a module named Yet::Another::Grammar like so:
+a class named Yet::Another::Grammar like so:
 
 	> perl -MParse::RecDescent - grammar Yet::Another::Grammar
 

@@ -246,7 +246,7 @@ sub revbracket($)
 	return $brack;
 }
 
-my $XMLNAME = q{[a-zA-Z_:][a-zA-Z_:.-]*};
+my $XMLNAME = q{[a-zA-Z_:][a-zA-Z0-9_:.-]*};
 
 sub extract_tagged (;$$$$$) # ($text, $opentag, $closetag, $pre, \%options)
 {
@@ -403,7 +403,7 @@ sub _match_variable($$)
 		return;
 	}
 	my $varpos = pos($$textref);
-	unless ($$textref =~ m/\G(\$#?|[\@\%])+/gc)
+	unless ($$textref =~ m/\G(\$#?|[*\@\%]|\\&)+/gc)
 	{
 		$@ = "Did not find leading dereferencer";
 		pos $$textref = $startpos;
@@ -418,14 +418,19 @@ sub _match_variable($$)
 		return;
 	}
 
-	1 while ( _match_codeblock($textref,'\s*(?:->(?:\s*\w+\s*)?)?\s*',
-				   '[({[]','[)}\]]',
-				   '[({[]','[)}\]]',
-				   0
-				   )
-	        || _match_variable($textref,'\s*->\s*')
-	        || $$textref =~ m/\G\s*->\s*\w+(?![{([])/gc
-	        );
+	while (1)
+	{
+		next if _match_codeblock($textref,
+					 qr/\s*->\s*(?:[a-zA-Z]\w+\s*)?/,
+					 qr/[({[]/, qr/[)}\]]/,
+					 qr/[({[]/, qr/[)}\]]/, 0);
+		next if _match_codeblock($textref,
+					 qr/\s*/, qr/[{[]/, qr/[}\]]/,
+					 qr/[{[]/, qr/[}\]]/, 0);
+		next if _match_variable($textref,'\s*->\s*');
+		next if $$textref =~ m/\G\s*->\s*\w+(?![{([])/gc;
+		last;
+	}
 	
 	my $endpos = pos($$textref);
 	return ($startpos, $varpos-$startpos,

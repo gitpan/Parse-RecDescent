@@ -150,6 +150,17 @@ In a void context the behaviour of the extraction subroutines is
 exactly the same as in a scalar context, except (of course) that the
 extracted substring is not returned.
 
+=head2 A note about prefixes
+
+Prefix patterns are matched without any trailing modifiers (C</gimsox> etc.)
+This can bite you if you're expecting a prefix specification like
+'.*?(?=<H1>)' to skip everything up to the first <H1> tag. Such a prefix
+pattern will only succeed if the <H1> tag is on the current line, since
+. normally doesn't match newlines.
+
+To overcome this limitation, you need to turn on /s matching within
+the prefix pattern, using the C<(?s)> directive: '(?s).*?(?=<H1>)'
+
 
 =head2 C<extract_delimited>
 
@@ -158,12 +169,12 @@ of extracting a single-character-delimited substring from the start of
 a string. For example, to extract a single-quote delimited string, the
 following code is typically used:
 
-	($remainder = $text) =~ s/\A('(\\'|[^'])*')//s;
+	($remainder = $text) =~ s/\A('(\\.|[^'])*')//s;
 	$extracted = $1;
 
 but with C<extract_delimited> it can be simplified to:
 
-	($extracted,$remainder) = extract_delimited $text, "'";
+	($extracted,$remainder) = extract_delimited($text, "'");
 
 C<extract_delimited> takes up to four scalars (the input text, the
 delimiters, a prefix pattern to be skipped, and any escape characters)

@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.77 of Parse::RecDescent
+                 Release of version 1.78 of Parse::RecDescent
 ==============================================================================
 
 
@@ -81,28 +81,29 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.77
+CHANGES IN VERSION 1.78
 
 
-	- IMPORTANT: Now requires 5.005 or better.
+        - Fixed error messages and documentation for
+          Parse::RecDescent::Precompile (thanks Jim)
 
-	- Added <perl_quotelike>, <perl_codeblock>, and <perl_variable>
-	  directives (see documentation)
+        - Moved demos to /demo subdirectory
 
-	- Added <autotree> directive (see documentation)
+        - Added tutorial in /tutorial subdirectory
 
-	- Added %item hash (see documentation - thanks Stef!)
+        - Added <autotree> directive
 
-	- Tweaked internal parser in line with changes to Text::Balanced
+	- Added (s /sep/) notation (thanks Greg)
 
-	- Added <nocheck> directive to switch off recursion checking and
-	  other checks in stable grammars (see documentation).
+	- Circumvented \G and /gc calamities
 
-	- Refined code generation WRT positional variables ($thisoffset, etc)
+        - Added more comprehensible error message when parser invoked
+          through non-existent startrule (thanks Jeff)
 
-	- Added positional entries for %item (see documentation)
+	- Fixed serious bug with creating new parsers after existing
+	  ones had failed. (Thanks Paul)
 
-	- Fixed bug with (missing) start actions under precompiler (thanks Theo)
+	- Fixed problem with nested implicit subrules (thanks Marc).
 
 
 ==============================================================================

@@ -2,9 +2,12 @@
 
 use Parse::RecDescent;
 
+$RD_AUTOACTION = q{ $item[-1]; # JUST TO SHOW THEY WORK WITH PRECOMPILED PARSERS
+}; 
 
 Parse::RecDescent->Precompile(<<'EndGrammar', "Calc", $0 );
 
+	{ use Coy; }
 	{ my $lexical_var = 1; }
 
 	mult_op: '*'	{ sub { $_[0] *= $_[1] } }
