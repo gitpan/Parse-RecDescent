@@ -195,7 +195,7 @@ sub expected($)
 		}
 	}
 
-	return join ' or ', @expected;
+	return join ', or ', @expected;
 }
 
 sub _contains($@)
@@ -884,8 +884,8 @@ sub new ($$$$$$)
 		   local \$SIG{__WARN__} = sub {0};
 		   '' =~ m$ldel$pattern$rdel" and $@)
 	{
-		Parse::RecDescent::_error("Token pattern \"m$ldel$pattern$rdel\"
-					   is not a valid regular expression",
+		Parse::RecDescent::_warn(3, "Token pattern \"m$ldel$pattern$rdel\"
+					     may not be a valid regular expression",
 					   $_[5]);
 		$@ =~ s/ at \(eval.*/./;
 		Parse::RecDescent::_hint($@);
@@ -1492,7 +1492,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.65';
+$VERSION = '1.66';
 
 # BUILDING A PARSER
 
@@ -2064,6 +2064,13 @@ sub _generate($$$;$$)
 				   in a rule definition must be
 				   on the same line as the rule name?");
 		}
+		elsif ($grammar =~ s/$ACTION//   ) # BAD ACTION, ALREADY FAILED
+		{
+			_error("Malformed action encountered",
+			       $line);
+			_hint("Did you forget the closing curly bracket
+			       or is there a syntax error in the action?");
+		}
 		elsif ($grammar =~ s/$OTHER//   )
 		{
 			_error("Untranslatable item encountered: \"$1\"",
@@ -2104,7 +2111,7 @@ sub _generate($$$;$$)
 		{
 			print STDERR "printing code (", length($code),") to RD_TRACE\n";
 			open TRACE_FILE, ">RD_TRACE"
-			and print TRACE_FILE $code
+			and print TRACE_FILE "my \$ERRORS;\n$code"
 			and close TRACE_FILE;
 		}
 
@@ -2175,7 +2182,8 @@ sub _check_grammar ($)
 		my $call;
 		foreach $call ( @{$rule->{"calls"}} )
 		{
-			if (!defined ${$rules}{$call})
+			if (!defined ${$rules}{$call}
+			  &&!defined &{"Parse::RecDescent::$call"})
 			{
 				if (!defined $::RD_AUTOSTUB)
 				{
@@ -2459,10 +2467,17 @@ sub _trace($;$$)
 	$tracecontext =~ s/\s+/ /g;
 	$tracerulename = qq{$tracerulename};
 	write TRACE;
-	if ($tracecontext && $tracecontext ne $lastcontext)
+	if ($tracecontext ne $lastcontext)
 	{
-		$lastcontext = $tracecontext;
-		$tracecontext = qq{"$tracecontext"};
+		if ($tracecontext)
+		{
+			$lastcontext = $tracecontext;
+			$tracecontext = qq{"$tracecontext"};
+		}
+		else
+		{
+			$tracecontext = qq{<NO TEXT LEFT>};
+		}
 		write TRACECONTEXT;
 	}
 }

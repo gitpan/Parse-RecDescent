@@ -1,73 +1,45 @@
 #! /usr/local/bin/perl -sw
 
-# PARSE LOGICAL EXPRESSIONS TO A OO PARSE TREE
+# PARSE AND EVALUATE LOGICAL EXPRESSIONS WITH A OO PARSE TREE
 
-package binary_node;
-	sub new { bless { left=>$_[1], right=>$_[3] }, ref($_[0])||$_[0] }
-	sub printme  { print "\n", "    " x $_[1], ref $_[0], ":\n";
-		       $_[0]->{left}->printme($_[1]+1) if $_[0]->{left};
-		       $_[0]->{right}->printme($_[1]+1) if $_[0]->{right};
-		     }
-
-package unary_node;
-	sub new { bless { child=>$_[2] }, ref($_[0])||$_[0] }
-	sub printme  { print "\n", "    " x $_[1], ref $_[0], ":\n";
-		       $_[0]->{child}->printme($_[1]+1) if $_[0]->{child};
-		     }
-
-package assign_node;
-	@ISA = qw { binary_node };
-
-package expr_node;
-	@ISA = qw { binary_node };
-
-package disj_node;
-	@ISA = qw { binary_node };
-
-package conj_node;
-	@ISA = qw { binary_node };
-
-package not_node;
-	@ISA = qw { unary_node };
-
-package brack_node;
-	@ISA = qw { unary_node };
-
-package atom_node;
-	sub new { bless { name=>$_[1] } }
-	sub printme { print "    " x $_[1], "atom: $_[0]->{name}\n" }
-
-package main;
+$::RD_AUTOACTION = 
+	q{ bless [$item[-1]], $item[0] };
 
 use Parse::RecDescent;
 
-$RD_AUTOACTION = q
-	  { $#item==1 ? $item[1] : new ${\"$item[0]_node"} (@item[1..$#item]) };
+my $parse = Parse::RecDescent->new(<<'EOG');
 
-
-$grammar =
-q{
-	expr	:	assign
-	assign  :	disj '=' assign | disj
-	disj	:	conj 'or' disj | conj
-	conj	:	unary 'and' conj | unary
-	unary	:	not | brack | atom
-	not     :	'not' atom
-	brack	:	'(' expr ')'
+	expr	:	set | clear | disj
+	set	:	'set' atom
+	clear	:	'clear' atom
+	disj	:	<leftop: conj 'or' conj>
+	conj	:	<leftop: unary 'and' unary>
+	unary	:	neg | atom
+	neg	:	'not' atom
 	atom	:	/[a-z]+/i
-				{ new atom_node ($item[1]) }
-};
+EOG
 
-$parse = new Parse::RecDescent ($grammar);
-
-while (<DATA>)
+while (<>)
 {
 	my $tree = $parse->expr($_);
-	$tree->printme(0) if $tree;
+	print $tree->eval() if $tree;
 }
 
-__DATA__
-a and b and not c
-(c or d) and f
+BEGIN {@var{qw(a c e)} = (1,1,1);}
 
-a = b or (c and d)
+sub returning
+{
+ 	local $^W;
+	print +(caller(1))[3], " returning ($_[0])\n";
+	$_[0];
+}
+
+sub expr::eval     { returning $_[0][0]->eval() }
+sub disj::eval     { returning join '', map {$_->eval()} @{$_[0][0]} }
+sub conj::eval     { returning ! join '', map {! $_->eval()} @{$_[0][0]} }
+sub unary::eval    { returning $_[0][0]->eval() }
+sub negation::eval { returning ! $_[0][0]->eval() }
+sub set::eval      { returning $::var{$_[0][0]->name()} = 1 }
+sub clear::eval    { returning $::var{$_[0][0]->name()} = 0 }
+sub atom::eval     { returning $::var{$_[0][0]} }
+sub atom::name     { returning $_[0][0] }

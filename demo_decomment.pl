@@ -19,6 +19,7 @@ my $parts = $parser->program($text) or die "malformed C program";
 
 print "Comments\n========\n$parts->{comments}\n";
 print "\nCode\n====\n$parts->{code}\n";
+print "\nStrings\n=======\n", map(qq{\t"$_"\n}, @{$parts->{strings}});
 
 BEGIN
 { $Grammar=<<'EOF';
@@ -26,33 +27,50 @@ BEGIN
 program : <rulevar: local $WithinComment=0>
 program : <rulevar: local $Comments = "">
 program : <rulevar: local $Code = "">
+program : <rulevar: local @Strings>
 
-program	: <skip:''> part(s) { { code=>$Code, comments=>$Comments} }
+program	: <skip:''> part(s)
+		{ { code=>$Code, comments=>$Comments, strings=>[@Strings]} }
 
 part	: comment
-        | ptext
-		 { $WithinComment=0; }
+        | C_code
         | string
 
-ptext   : m|[^"/]+|
-		{ $WithinComment=0; $Code .= $item[1] }
-        | m|/[^*/]|
-		{ $WithinComment=0; $Code .= $item[1] }
-
-string	: /"(\\.|[^"\\])+"/
+C_code  : m{(			
+	      [^"/]+		# one or more non-delimiters
+	      (			# then (optionally)...
+	       /		# a potential comment delimiter
+	       [^*/]		# which is not an actual delimiter
+	      )?		# 
+	    )+			# all repeated once or more
+	   }x
 		{ $Code .= $item[1] }
 
+string	: m{"			# a leading delimiter
+	    ((			# zero or more...
+	      \\.		# escaped anything
+	      |			# or
+	      [^"]		# anything but a delimiter
+	     )*
+	    )
+	    "}x
+		{ $Code .= $item[1]; push @Strings, $1 }
 
-comment	: m|\s*//[^\n]*\n|
-		{ $Code .= "\n"  unless $WithinComment++; $Comments .= $item[1] }
-	| m{\s*/\*(?:[^*]+|\*(?!/))*\*/[ \t]*}
-		{ $Comments .= $item[1]; $Code .= " "; }
-	| m{\s*/\*		# opt. white space comment opener, then...
-	    (?:[^*]+|\*(?!/))*	# anything except */ ...
+
+comment	: m{\s*			# optional whitespace
+	    //			# comment delimiter
+	    [^\n]*		# anything except a newline
+	    \n			# then a newline
+	   }x
+		{ $Code .= "\n"; $Comments .= $item[1] }
+
+	| m{\s*			# optional whitespace
+	    /\*			# comment opener
+	    (?:[^*]+|\*(?!/))*	# anything except */
 	    \*/		        # comment closer
             ([ \t]*)?           # trailing blanks or tabs
 	   }x	
-		{ $Comments .= $item[1]; $Code .= "\n" unless $WithinComment++;  }
+		{ $Code .= " "; $Comments .= $item[1] }
 
 EOF
 }
@@ -66,6 +84,8 @@ int main()
 /* this should
    be removed
 */
+  char *cp1 = "";
+  char *cp2 = "cp2";
   int i;  // a counter
           // remove this line altogehter
   int k;  

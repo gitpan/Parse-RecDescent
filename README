@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.65 of Parse::RecDescent
+                 Release of version 1.66 of Parse::RecDescent
 ==============================================================================
 
 DESCRIPTION
@@ -79,13 +79,18 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.65
+CHANGES IN VERSION 1.66
 
 
-	- Added <leftop:...> and <rightop:...> directives
+	- Improved error message when an action fails to parse
+	  (Thanks Tuomas).
 
-	- Added level 2 warning and autoreject for lone <error?>
-	  directive in a production.
+	- Allowed predefined subroutines in package Parse::RecDescent
+	  to be used as rules in grammars
+
+	- Changed error report on bad regexes to level 3 warning, since 
+	  compile-time interpolation failure may falsely invalidate
+	  regexes that would work at run-time.
 
 
 ==============================================================================

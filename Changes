@@ -316,3 +316,16 @@ Revision history for Perl extension Parse::RecDescent.
 
 	- Added level 2 warning and autoreject for lone <error?>
 	  directive in a production.
+
+
+1.66	Fri Jul  2 13:35:06 1999
+
+	- Improved error message when an action fails to parse
+	  (Thanks Tuomas).
+
+	- Allowed predefined subroutines in package Parse::RecDescent
+	  to be used as rules in grammars
+
+	- Changed error report on bad regexes to level 3 warning, since 
+	  compile-time interpolation failure may falsely invalidate
+	  regexes that would work at run-time.
