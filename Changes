@@ -144,3 +144,12 @@ Revision history for Perl extension Parse::RecDescent.
 
 	- Added $::RD_AUTOACTION to simplify standard actions at the
 	  end of each production
+
+
+1.31	Fri May 22 06:11:26 1998
+
+	- Fixed bug in naming archive file
+
+
+1.32	Fri May 22 06:15:26 1998
+

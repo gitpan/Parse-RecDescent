@@ -2,5 +2,5 @@
 use ExtUtils::MakeMaker;
 WriteMakefile(
 		NAME	=> 'Parse::RecDescent',
-		VERSION => '1.30',
+		VERSION => '1.33',
 	     );

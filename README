@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.30 of Parse::RecDescent
+                 Release of version 1.33 of Parse::RecDescent
 ==============================================================================
 
 DESCRIPTION
@@ -79,24 +79,9 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.30
+CHANGES IN VERSION 1.33
 
-
-	- Added <rulevar> directive
-
-	- Added culling of productions starting with <reject> or <rulevar>
-
-	- Cleaned up and improved format (and speed) of tracing code
-
-	- Added warning levels
-
-	- Optimized generation of token separator checking code.
-
-	- Fixed bug encountered when parsing a literal string
-
-	- Added $::RD_AUTOACTION to simplify standard actions at the
-	  end of each production
-
+(No changes have been documented for this version)
 
 ==============================================================================
 
