@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.33 of Parse::RecDescent
+                 Release of version 1.35 of Parse::RecDescent
 ==============================================================================
 
 DESCRIPTION
@@ -79,9 +79,45 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.33
+CHANGES IN VERSION 1.35
 
-(No changes have been documented for this version)
+
+	- Removed "foreach my $var ( @list )" constructs,
+	  which were biting users with perl 5.003 and earlier.
+
+	- Fixed bug calling &Parse::RecDescent::toksepcode
+	  instead of &Parse::RecDescent::Rule::toksepcode
+
+	- Changed grammar so that colons in rule definitions
+	  must appear on the same line as the rule name
+	  (as documented). Added an explicit error message
+	  when this is not the case.
+
+	- Added $thiscolumn, which indicates the current 
+	  column at any point in the parse.
+
+	- Added $thisoffset, which indicates the absolute
+	  position in the original text string at any
+	  point in the parse.
+
+	- Added $prevline and $prevcolumn, which indicate
+	  line and column of the last char of the last
+	  successfully matched item.
+
+	- Added @itempos which provides:
+
+		$itempos[$n]{offset}{from}
+		$itempos[$n]{offset}{to}
+		$itempos[$n]{line}{from}
+		$itempos[$n]{line}{to}
+		$itempos[$n]{column}{from}
+		$itempos[$n]{column}{to}
+
+	  corresponding to each $item[$n].
+	  See new documentation.
+
+	- Several trivial lexical changes to make xemacs happy
+
 
 ==============================================================================
 

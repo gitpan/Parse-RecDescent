@@ -1,9 +1,9 @@
-#!/usr/local/bin/perl -w
+#!/usr/local/bin/perl -ws
 
 # REMOVE COMMENTS FROM C++ CODE
 
 # ORIGINAL BY Helmut Jarausch 
-# EXTENDED BY Damian Conway
+# EXTENDED BY Damian Conway AND Helmut Jarausch 
 
 use strict;
 use Parse::RecDescent;
@@ -17,50 +17,66 @@ my $text = <DATA>;
 
 $parser->program($text);
 
-print $text;
-
 BEGIN
 { $Grammar=<<'EOF';
 
-program	: part(s)
+{ my $WithinComment; }
 
-part	: ptext
-	| string
-	| comment
+program	: { $thisparser->{tokensep}= ''; } <reject> # no token sep
+        | part(s)
 
-ptext	: /[^"\/]+/		{ print $item[1]; }
-	| m{/[^*/]}		{ print $item[1]; }
+part	: comment
+        | ptext
+		 { $WithinComment= 0; }
+        | string
 
-string	: '"' s_char(s) '"'	{ print '"', @{$item[2]}, '"'; }
+ptext   : m|[^"/]+|
+		{ print "$item[1]"; $WithinComment= 0; }
+        | m|/[^*/]|
+		{ print "$item[1]"; $WithinComment= 0; }
 
-s_char  : 			{ $thisrule->{tokensep} = ''; } <reject>
-	| /[^"\\]+/
+string	: '"' s_char(s) '"'
+		{ print '"',@{$item[2]},'"'; }
+
+s_char	: /[^"\\]+/
 	| /(?:\\.)+/
 
+comment	: m|\s*//[^\n]*\n|
+		{ print "\n"  unless $WithinComment++;  }
+	| m{\s*/\*(?:[^*]+|\*(?!/))*\*/[ \t]*}
+		{ print " "; }
+	| m{\s*/\*		# opt. white space comment opener, then...
+	    (?:[^*]+|\*(?!/))*	# anything except */ ...
+	    \*/		        # comment closer
+            ([ \t]*)?           # trailing blanks or tabs
+	   }x	
+		{ print "\n" unless $WithinComment++;  }
 
-
-comment	: m{//.*$}m
-	| m{/\*		# COMMENT OPENER, THEN...
-	    .*?		# ANY NUMBER OF CHARS UNTIL THE FIRST...
-	    \*/		# COMMENT CLOSER
-	   }sx		# (OVER MULTIPLE LINES)
 EOF
 }
 __DATA__
-// test program for decomment
+program test; // for decomment
+
 // using Parse::RecDescent
 
 int main()
 {
-/* this ***should***
+/* this should
    be removed
 */
   int i;  // a counter
-  int k;
-  int l;  /* a loop
+          // remove this line altogehter
+  int k;  
+      int more_indented;  // keep indentation
+      int l;  /* a loop
              variable */
+      // should be completely removed
 
-  char* str = "/* Ceci n'est pas un commentaire! */";
-
+  char *str = "/* this is no comment */";
   return 0;
 }
+
+
+
+
+

@@ -9,25 +9,27 @@ use Text::Balanced qw ( extract_codeblock extract_bracketed extract_quotelike );
 
 use vars qw ( $tokensep );
 
-   *deftokensep  = \'\s*';	# DEFAULT SEPARATOR IS OPTIONAL WHITESPACE
+   *deftokensep  = \ '\s*';	# DEFAULT SEPARATOR IS OPTIONAL WHITESPACE
    $tokensep  = '\s*';		# UNIVERSAL SEPARATOR IS OPTIONAL WHITESPACE
 my $MAXREP  = 100_000_000;	# REPETITIONS MATCH AT MOST 100,000,000 TIMES
 
 package Parse::RecDescent::LineCounter;
 
-sub TIESCALAR	# ($classname, \$text, $thisparser)
+sub TIESCALAR	# ($classname, \$text, $thisparser, $prevflag)
 {
 	bless {
 		text    => $_[1],
 		parser  => $_[2],
+		prev	=> $_[3]?1:0,
 	      }, $_[0];
 }
 
 sub FETCH    
 {
 	my $parser = $_[0]->{parser};
+	my $from = $parser->{fulltextlen}-length(${$_[0]->{text}})-$_[0]->{prev};
 	$parser->{lastlinenum} = $parser->{offsetlinenum}
-			   - Parse::RecDescent::_linecount(${$_[0]->{text}})
+			   - Parse::RecDescent::_linecount(substr($parser->{fulltext},$from))
 			   + 1;
 }
 
@@ -51,6 +53,52 @@ sub resync       # ($linecounter)
 
 	$parser->{offsetlinenum} += $parser->{lastlinenum} - $apparently;
 	return 1;
+}
+
+package Parse::RecDescent::ColCounter;
+
+sub TIESCALAR	# ($classname, \$text, $thisparser, $prevflag)
+{
+	bless {
+		text    => $_[1],
+		parser  => $_[2],
+		prev    => $_[3]?1:0,
+	      }, $_[0];
+}
+
+sub FETCH    
+{
+	my $parser = $_[0]->{parser};
+	my $missing = $parser->{fulltextlen}-length(${$_[0]->{text}})-$_[0]->{prev}+1;
+	substr($parser->{fulltext},0,$missing) =~ m/^(.*)\Z/m;
+	return length($1);
+}
+
+sub STORE
+{
+	die "Can't set column number via \$thiscolumn\n";
+}
+
+
+package Parse::RecDescent::OffsetCounter;
+
+sub TIESCALAR	# ($classname, \$text, $thisparser)
+{
+	bless {
+		text    => $_[1],
+		parser  => $_[2],
+	      }, $_[0];
+}
+
+sub FETCH    
+{
+	my $parser = $_[0]->{parser};
+	return $parser->{fulltextlen}-length(${$_[0]->{text}});
+}
+
+sub STORE
+{
+	die "Can't set current offset via \$thisoffset\n";
 }
 
 
@@ -106,7 +154,8 @@ sub dump {
 			"description" => q[ @{[ $self->expected() ]} ],
 			"prods"    => [
 _STUFF_
-		foreach my $prod (@{$self->{"prods"}}) {
+		my $prod;
+		foreach $prod (@{$self->{"prods"}}) {
 			$prod->dump($handle, $space);
 			print $handle ",\n";
 		}
@@ -264,8 +313,14 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	my $expectation = new Parse::RecDescent::Expectation($thisrule->expected());
 	$expectation->at($_[1]);
 
-	my $thisline;
+	my $thisoffset;
+	tie $thisoffset, q{Parse::RecDescent::OffsetCounter}, \$text, $thisparser;
+	my ($thiscolumn, $prevcolumn);
+	tie $thiscolumn, q{Parse::RecDescent::ColCounter}, \$text, $thisparser;
+	tie $prevcolumn, q{Parse::RecDescent::ColCounter}, \$text, $thisparser, 1;
+	my ($thisline, $prevline);
 	tie $thisline, q{Parse::RecDescent::LineCounter}, \$text, $thisparser;
+	tie $prevline, q{Parse::RecDescent::LineCounter}, \$text, $thisparser, 1;
 
 	'. $self->{vars} .'
 
@@ -356,7 +411,8 @@ sub dump {
 					"line"     => @{[ defined $self->{"line"} ? $self->{"line"} : 'undef' ]},
 					"items"    => [
 _STUFF_
-		foreach my $item (@{$self->{"items"}}) {
+		my $item;
+		foreach $item (@{$self->{"items"}}) {
 			$item->dump($handle, $space);
 			print $handle ",\n";
 		}
@@ -412,6 +468,37 @@ sub additem($$)
 	return $item;
 }
 
+
+sub preitempos
+{
+	return q
+	{
+		push @itempos, {'offset' => {'from'=>$thisoffset, 'to'=>undef},
+				'line'   => {'from'=>$thisline,   'to'=>undef},
+				'column' => {'from'=>$thiscolumn, 'to'=>undef} };
+	}
+}
+
+sub incitempos
+{
+	return q
+	{
+		$itempos[$#itempos]{'offset'}{'from'} += length($1);
+		$itempos[$#itempos]{'line'}{'from'}   = $thisline;
+		$itempos[$#itempos]{'column'}{'from'} = $thiscolumn;
+	}
+}
+
+sub postitempos
+{
+	return q
+	{
+		$itempos[$#itempos]{'offset'}{'to'} = $thisoffset-1;
+		$itempos[$#itempos]{'line'}{'to'}   = $prevline;
+		$itempos[$#itempos]{'column'}{'to'} = $prevcolumn;
+	}
+}
+
 sub code($$$$)
 {
 	my ($self,$namespace,$rule,$parser) = @_;
@@ -431,19 +518,27 @@ sub code($$$$)
 		my $_savetext;
 		my $tokensep;
 		@item = ("' . $rule->{"name"} . '");
-
 ';
+	$code .= 
+'		my @itempos = ({});
+'			if $parser->{_checkitempos};
 
 	my $item;
-	for (my $i = 0; $i < @{$self->{"items"}}; $i++)
+	my $i;
+	for ($i = 0; $i < @{$self->{"items"}}; $i++)
 	{
 		$item = ${$self->{items}}[$i];
-		$code .= Parse::RecDescent::toksepcode(1)
+		$code .= Parse::RecDescent::Rule::toksepcode(1)
 			if $parser->{_checktoksep} &&
 			   (!$i || $item->isterminal()
 				&& ${$self->{items}}[$i-1]->maychangetoksep());
 
-		$code .= $item->code($namespace,$rule);
+		$code .= preitempos() if $parser->{_checkitempos};
+
+		$code .= $item->code($namespace,$rule,$parser->{_checkitempos});
+
+		$code .= postitempos() if $parser->{_checkitempos};
+
 	}
 
 	if ($parser->{_AUTOACTION} && !$item->isa("Parse::RecDescent::Action"))
@@ -503,7 +598,7 @@ sub issubrule { undef }
 sub isterminal { 0 }
 sub maychangetoksep { 1 }
 
-sub code($$$)
+sub code($$$$)
 {
 	my ($self, $namespace, $rule) = @_;
 	
@@ -555,7 +650,7 @@ sub dump {
 	print $handle qq!\t\t\t\t\tbless( {}, '${space}::SimpleLeaf') !;
 }
 
-sub code($$$)
+sub code($$$$)
 {
 	my ($self, $namespace, $rule) = @_;
 	
@@ -566,7 +661,7 @@ sub code($$$)
 					. $self->describe . ']},
 					Parse::RecDescent::_tracefirst($text),
 					  q{' . $rule->{name} . '})
-						if defined $::RD_TRACE;
+						if defined $::RD_TRACE; ' .'
 		$_tok = do { ' . $self->{"code"} . ' };
 		if (defined($_tok))
 		{
@@ -617,7 +712,7 @@ sub dump {
 	print $handle qq!\t\t\t\t\tbless( {}, '${space}::SimpleLeaf') !;
 }
 
-sub code($$$)
+sub code($$$$)
 {
 	my ($self, $namespace, $rule) = @_;
 	
@@ -663,7 +758,7 @@ sub dump {
 	print $handle qq!\t\t\t\t\tbless( {}, '${space}::SimpleLeaf') !;
 }
 
-sub code($$$)
+sub code($$$$)
 {
 	my ($self, $namespace, $rule) = @_;
 	
@@ -691,7 +786,7 @@ sub code($$$)
 		($self->{"commitonly"} ? '$commit' : '1') . 
 		") { do {$action} unless ".' $_noactions; undef } else {0}',
 	        			$self->{"lookahead"},0,"<error...>"); 
-	return $dir->code($namespace, $rule);
+	return $dir->code($namespace, $rule, 0);
 }
 
 1;
@@ -754,9 +849,9 @@ sub dump {
 }             
 
 
-sub code($$$)
+sub code($$$$)
 {
-	my ($self, $namespace, $rule) = @_;
+	my ($self, $namespace, $rule, $checkitempos) = @_;
 	my $ldel = $self->{"ldelim"};
 	my $rdel = $self->{"rdelim"};
 	my $sdel = $ldel;
@@ -776,6 +871,7 @@ my $code = '
 
 		' . ($self->{"lookahead"}<0?'if':'unless')
 		. ' ($text =~ s/\A($_toksep)/$lastsep=$1 and ""/e and '
+		. ($checkitempos? 'do {'.Parse::RecDescent::Production::incitempos().' 1} and ' : '')
 		. '  $text =~ s' . $ldel . '\A(?:' . $self->{"pattern"} . ')'
 				 . $rdel . $sdel . $mod . ')
 		{
@@ -833,9 +929,9 @@ sub dump {
 	print $handle qq!\t\t\t\t\tbless( { 'description' => q{$self->{'description'}} }, '${space}::SimpleLeaf') !;
 }             
 
-sub code($$$)
+sub code($$$$)
 {
-	my ($self, $namespace, $rule) = @_;
+	my ($self, $namespace, $rule, $checkitempos) = @_;
 	
 my $code = '
 		Parse::RecDescent::_trace(q{Trying token: [' . $self->describe
@@ -850,6 +946,7 @@ my $code = '
 
 		' . ($self->{"lookahead"}<0?'if':'unless')
 		. ' ($text =~ s/\A($_toksep)/$lastsep=$1 and ""/e and '
+		. ($checkitempos? 'do {'.Parse::RecDescent::Production::incitempos().' 1} and ' : '')
 		. '  $text =~ s/\A' . quotemeta($self->{"pattern"}) . '//)
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
@@ -906,9 +1003,9 @@ sub dump {
 	print $handle qq!\t\t\t\t\tbless( { 'description' => q{$self->{'description'}} }, '${space}::SimpleLeaf') !;
 }             
 
-sub code($$$)
+sub code($$$$)
 {
-	my ($self, $namespace, $rule) = @_;
+	my ($self, $namespace, $rule, $checkitempos) = @_;
 	
 my $code = '
 		Parse::RecDescent::_trace(q{Trying token: [' . $self->describe
@@ -923,6 +1020,7 @@ my $code = '
 
 		' . ($self->{"lookahead"}<0?'if':'unless')
 		. ' ($text =~ s/\A($_toksep)/$lastsep=$1 and ""/e and '
+		. ($checkitempos? 'do {'.Parse::RecDescent::Production::incitempos().' 1} and ' : '')
 		. '  $text =~ s/\A(?:' . $self->{"pattern"} . ')//)
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
@@ -1000,7 +1098,7 @@ _STUFF_
 	
 }
 
-sub code($$$)
+sub code($$$$)
 {
 	my ($self, $namespace, $rule) = @_;
 	
@@ -1012,9 +1110,8 @@ sub code($$$)
 		if (1) { no strict qw{refs};
 		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
 				: 'qq{'.$self->describe.'}' ) . ')->at($text);
-		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) .'
-
-		' . ($self->{"lookahead"}<0?'if':'unless')
+		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' )
+		. ($self->{"lookahead"}<0?'if':'unless')
 		. ' (defined ($_tok = '
 		. $self->callsyntax($namespace.'::')
 		. '($thisparser,$text,$repeating,'
@@ -1124,7 +1221,7 @@ sub dump {
 _STUFF_
 }
 
-sub code($$$)
+sub code($$$$)
 {
 	my ($self, $namespace, $rule) = @_;
 	
@@ -1139,7 +1236,6 @@ sub code($$$)
 		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
 				: 'qq{'.$self->describe.'}' ) . ')->at($text);
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) .'
-
 		unless (defined ($_tok = $thisparser->_parserepeat($text, '
 		. $self->callsyntax($namespace.'::')
 		. ', ' . $min . ', ' . $max . ', '
@@ -1228,7 +1324,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.33';
+$VERSION = '1.35';
 
 # BUILDING A PARSER
 
@@ -1324,9 +1420,10 @@ sub _no_rule ($$;$)
 
 my $NEGLOOKAHEAD	= '\A(\s*\.\.\.!)';
 my $POSLOOKAHEAD	= '\A(\s*\.\.\.)';
-my $RULE		= '\A\s*(\w+)\s*:';
+my $RULE		= '\A\s*(\w+)[ \t]*:';
 my $PROD		= '\A\s*([|])';
-my $TOKEN		= q{\A\s*/((\\\\/|[^/])+)/([gimsox]*)};
+#my $TOKEN		= q{\A\s*/((\\\\/|[^/])+)/([gimsox]*)};
+my $TOKEN		= q{\A\s*/((\\\\/|[^/])*)/([gimsox]*)};
 my $MTOKEN		= q{\A\s*m[^\w\s]};
 my $LITERAL		= q{\A\s*'((\\\\'|[^'])+)'};
 my $INTERPLIT		= q{\A\s*"((\\\\"|[^"])+)"};
@@ -1354,6 +1451,7 @@ my $AUTOERRORMK		= '\A\s*<error(\??)>';
 my $MSGERRORMK		= '\A\s*<error(\??):';
 my $UNCOMMITPROD	= $PROD.'\s*(?=<uncommit)';
 my $ERRORPROD		= $PROD.'\s*(?=<error)';
+my $LONECOLON		= '\A\s*:';
 my $OTHER		= '\A\s*([^\s]+)';
 
 my $lines = 0;
@@ -1368,6 +1466,7 @@ sub _generate($$$;$)
 	my $lookaheadspec = "";
 	$lines = _linecount($grammar) unless $lines;
 	$self->{_checktoksep} = ($grammar =~ /tokensep/);
+	$self->{_checkitempos} = ($grammar =~ /\@itempos\b|\$itempos\s*\[/);
 	my $line;
 
 	my $rule = undef;
@@ -1563,28 +1662,28 @@ sub _generate($$$;$)
 			or  _no_rule("production",$line);
 			$aftererror = 0;
 		}
-		elsif ($grammar =~ s#$LITERAL##)
+		elsif ($grammar =~ s/$LITERAL//)
 		{
 			_parse("a literal token", $aftererror,$line);
 			$item = new Parse::RecDescent::Literal($1,$lookahead,$line);
 			$prod and $prod->additem($item)
 			      or  _no_rule("literal token",$line,"'$1'");
 		}
-		elsif ($grammar =~ s#$INTERPLIT##)
+		elsif ($grammar =~ s/$INTERPLIT//)
 		{
 			_parse("an interpolated literal token", $aftererror,$line);
 			$item = new Parse::RecDescent::InterpLit($1,$lookahead,$line);
 			$prod and $prod->additem($item)
 			      or  _no_rule("interpolated literal token",$line,"'$1'");
 		}
-		elsif ($grammar =~ s#$TOKEN##)
+		elsif ($grammar =~ s/$TOKEN//)
 		{
 			_parse("a /../ pattern token", $aftererror,$line);
 			$item = new Parse::RecDescent::Token($1,'/',$3?$3:'',$lookahead,$line);
 			$prod and $prod->additem($item)
 			      or  _no_rule("regex token",$line,"/$1/");
 		}
-		elsif ($grammar =~ m#$MTOKEN#
+		elsif ($grammar =~ m/$MTOKEN/
 			and do { ($code,$grammar,@components)
 					= extract_quotelike($grammar);
 				 $code }
@@ -1743,6 +1842,14 @@ sub _generate($$$;$)
 				!$matchrule and $rule and $rule->addcall($name);
 			}
 		}
+		elsif ($grammar =~ s/$LONECOLON//   )
+		{
+			_error("Unexpected colon encountered", $line);
+			_hint("Did you mean \"|\" (to start a new production)?
+			           Or perhaps you forgot that the colon
+				   in a rule definition must be
+				   on the same line as the rule name?");
+		}
 		elsif ($grammar =~ s/$OTHER//   )
 		{
 			_error("Untranslatable item encountered: \"$1\"",
@@ -1851,7 +1958,8 @@ _STATIC_
 	"rules" => {
 _STUFF_
 
-	while (my ($rname, $rule) = each %{$self->{'rules'}}) {
+	my ($rname, $rule);
+	while (($rname, $rule) = each %{$self->{'rules'}}) {
 		print $handle qq[ '$rname' => ];
 		$rule->dump($handle, $self->{"namespace"});
 		print $handle ",\n";
@@ -2011,6 +2119,8 @@ sub AUTOLOAD	# ($parser, $text; $linenum)
 	my $text = $_[1];
 	$_[0]->{lastlinenum} = $_[2]||_linecount($_[1]);
 	$_[0]->{offsetlinenum} = $_[0]->{lastlinenum};
+	$_[0]->{fulltext} = $_[1];
+	$_[0]->{fulltextlen} = length $_[1];
 				 
 	$AUTOLOAD =~ s/$class/$_[0]->{namespace}/;
 	no strict "refs";
@@ -2233,7 +2343,7 @@ sub _linecount($)
 package main;
 
 use vars qw ( $RD_ERRORS $RD_WARN $RD_HINT $RD_TRACE );
-$RD_ERRORS = 1;
+$::RD_ERRORS = 1;
 
 1;
 
