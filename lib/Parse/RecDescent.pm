@@ -5,7 +5,7 @@ use strict;
 
 package Parse::RecDescent;
 
-use Text::Balanced qw ( extract_codeblock extract_bracketed extract_quotelike );
+use Text::Balanced qw ( extract_codeblock extract_bracketed extract_quotelike extract_delimited );
 
 use vars qw ( $skip );
 
@@ -14,6 +14,7 @@ use vars qw ( $skip );
 my $MAXREP  = 100_000_000;	# REPETITIONS MATCH AT MOST 100,000,000 TIMES
 
 package Parse::RecDescent::LineCounter;
+
 
 sub TIESCALAR	# ($classname, \$text, $thisparser, $prevflag)
 {
@@ -1230,7 +1231,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.63';
+$VERSION = '1.64';
 
 # BUILDING A PARSER
 
@@ -1301,8 +1302,8 @@ my $PROD		= '\A\s*([|])';
 #my $TOKEN		= q{\A\s*/((\\\\/|[^/])+)/([gimsox]*)};
 my $TOKEN		= q{\A\s*/((\\\\/|[^/])*)/([gimsox]*)};
 my $MTOKEN		= q{\A\s*m[^\w\s]};
-my $LITERAL		= q{\A\s*'((\\\\'|[^'])+)'};
-my $INTERPLIT		= q{\A\s*"((\\\\"|[^"])+)"};
+my $LITERAL		= q{\A\s*'((\\\\['\\\\]|[^'])+)'};
+my $INTERPLIT		= q{\A\s*"((\\\\["\\\\]|[^"])+)"};
 my $SUBRULE		= '\A\s*(\w+)';
 my $MATCHRULE		= '\A(\s*<matchrule:)';
 my $OPTIONAL		= '\A\((\?)\)';
@@ -1598,9 +1599,11 @@ sub _generate($$$;$)
 			$aftererror = 0;
 		}
 		elsif ($grammar =~ s/$LITERAL//)
+		#was: elsif ($code = extract_delimited($grammar,q{'}))
 		{
-			_parse("a literal terminal", $aftererror,$line);
-			$item = new Parse::RecDescent::Literal($1,$lookahead,$line);
+			($code = $1) =~ s/\\\\/\\/g;
+			_parse("a literal terminal", $aftererror,$line,$1);
+			$item = new Parse::RecDescent::Literal($code,$lookahead,$line);
 			$prod and $prod->additem($item)
 			      or  _no_rule("literal terminal",$line,"'$1'");
 		}

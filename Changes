@@ -299,3 +299,15 @@ Revision history for Perl extension Parse::RecDescent.
 
 	- Fixed obscure bug in replacement of rules containing
 	  implicit subrules (alternations). Thanks Craig.
+
+
+1.64	Sun Mar 28 05:44:14 1999
+
+	- Synchronized with Text::Balanced version
+
+	- Fixed obscure bug in the treatment of escaped backslashes
+	  in literal tokens. Thanks Matthew.
+
+
+1.64	Sun Mar 28 06:02:40 1999
+
