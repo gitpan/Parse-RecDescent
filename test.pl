@@ -29,10 +29,10 @@ sub ok($;$)
 
 do { $RD_TRACE = 1; $RD_HINT = 1; } if debug > 1;
 
-$data1    = 'the 1st   teeeeeest are easy easy easyeasy';
+$data1    = '(the 1st   teeeeeest are easy easy easyeasy';
 $expect1  = '[1st|teeeeeest|are|easy:easy:easy:easy]';
 
-$data2    = 'the 2nd   test is';
+$data2    = '(the 2nd   test is';
 $expect2  = '[2nd|test|is|]';
 
 $data3    = 'the cat';
@@ -49,9 +49,9 @@ $expect5  = 'typedef=>a, typedef=>b, defn=>x, baddef, baddef';
 
 $parser_A = new Parse::RecDescent q
 {
-	test1:	'the' "$::first" /te+st/ is ('easy')(s?)
-			{ "[$item[2]|$item[3]|$item[4]|" .
-				join(':', @{$item[5]})   .
+	test1:	"(" 'the' "$::first" /te+st/ is ('easy')(s?)
+			{ "[$item[3]|$item[4]|$item[5]|" .
+				join(':', @{$item[6]})   .
 				']' }
 
 	is:	'is' | 'are'
@@ -124,23 +124,6 @@ $parser_A = new Parse::RecDescent q
 
 ok ($parser_A) or exit;
 
-##################################################################
-
-package Derived;
-
-@ISA = qw { Parse::RecDescent };
-sub method($$) { reverse $_[1] }
-
-package main;
-
-$parser_B = new Derived q
-{
-	test1:	/[a-z]+/i
-		{ reverse $item[1] }
-		{ $thisparser->method($item[2]) }
-};
-
-ok ($parser_B) or exit;
 
 
 ##################################################################
@@ -200,6 +183,24 @@ ok($res, "prod 2");
 $res = $parser_A->test7("x yyy \n y");
 ok($res, "y");
 
+
+##################################################################
+
+package Derived;
+
+@ISA = qw { Parse::RecDescent };
+sub method($$) { reverse $_[1] }
+
+package main;
+
+$parser_B = new Derived q
+{
+	test1:	/[a-z]+/i
+		{ reverse $item[1] }
+		{ $thisparser->method($item[2]) }
+};
+
+ok ($parser_B) or exit;
 ##################################################################
 $res = $parser_B->test1("literal string");
 ok($res, "literal");

@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.43 of Parse::RecDescent
+                 Release of version 1.51 of Parse::RecDescent
 ==============================================================================
 
 DESCRIPTION
@@ -79,10 +79,11 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.43
+CHANGES IN VERSION 1.51
 
 
-	- Resychronized Balanced.pm versions
+	- Maintenance release, rectifying bad soft links in the 1.50 
+	  distributions
 
 
 ==============================================================================

@@ -203,7 +203,7 @@ Revision history for Perl extension Parse::RecDescent.
 	- Added ability to pass args to the start-rule.
 
 
-1.42	Fri Aug 14 15:45:22 1998
+1.42	????
 
 	- Added a test.pl
 
@@ -223,3 +223,22 @@ Revision history for Perl extension Parse::RecDescent.
 1.43	Sat Aug 15 06:43:46 1998
 
 	- Resychronized Balanced.pm versions
+
+
+1.50	Thu Aug 27 09:29:31 1998
+
+	- Changed <rulevar:...> parser to use extract_codeblock, so as to
+	  handle embedded '>' chars (e.g. <rulevar: $tmp = $self->{tmp}> )
+
+	- Added <defer:...> to allow deferred actions which are
+	  only executed if they are part of a rule that eventually succeeds.
+	  (see the new section under "Directives" in RecDescent.pod)
+
+	- Fixed matching interpolated literals (was broken when literal
+	  contained pattern metacharacters)
+
+
+1.51	Thu Aug 27 16:25:08 1998
+
+	- Maintenance release, rectifying bad soft links in the 1.50 
+	  distributions

@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.43 of Parse::RecDescent,
-released August 15, 1998.
+This document describes version 1.51 of Parse::RecDescent,
+released August 27, 1998.
 
 =head1 SYNOPSIS
 
@@ -877,10 +877,10 @@ get the disaster you deserve :-).
 =head2 Directives
 
 Directives are special pre-defined actions which may be used to alter
-the behaviour of the parser. There are seven directives:
+the behaviour of the parser. There are eight directives:
 C<E<lt>commitE<gt>>, C<E<lt>uncommitE<gt>>, C<E<lt>rejectE<gt>>,
 C<E<lt>resyncE<gt>>, C<E<lt>errorE<gt>>, C<E<lt>rulevarE<gt>>,
-and C<E<lt>matchruleE<gt>>.
+C<E<lt>matchruleE<gt>>, and C<E<lt>defer<gt>>.
 
 =over 4
 
@@ -1333,6 +1333,106 @@ only match the string "two dogs dogs dogs" up to the eighth letter. If
 the rule name were "early bound" (that is, evaluated only the first
 time the directive is encountered in a production), the reverse
 behaviour would be expected.
+
+=item Deferred actions
+
+The C<E<lt>defer:...E<gt>> directive is used to specify an action to be 
+performed when (and only if!) the current production ultimately succeeds.
+
+Whenever a C<E<lt>defer:...E<gt>> directive appears, the code it specifies
+is converted to a closure (an anonymous subroutine reference) which is
+queued within the active parser object. Note that,
+because the deferred code is converted to a closure, the values of any
+"local" variable (such as C<$text>, <@item>, etc.) are preserved
+until the deferred code is actually executed.
+
+If the parse ultimately succeeds
+I<and> the production in which the C<E<lt>defer:...E<gt>> directive was
+evaluated formed part of the successful parse, then the deferred code is
+executed immediately before the parse returns. If however the production
+which queued a deferred action fails, or one of the higher-level 
+rules which called that production fails, then the deferred action is
+removed from the queue, and hence is never executed.
+
+For example, given the grammar:
+
+	sentence: noun trans noun
+		| noun intrans
+
+	noun:	  'the dog'
+			{ print "$item[1]\t(noun)\n" }
+	    |	  'the meat'
+			{ print "$item[1]\t(noun)\n" }
+
+	trans:	  'ate'
+			{ print "$item[1]\t(transitive)\n" }
+
+	intrans:  'ate'
+			{ print "$item[1]\t(intransitive)\n" }
+	       |  'barked'
+			{ print "$item[1]\t(intransitive)\n" }
+	
+then parsing the sentence C<"the dog ate"> would produce the output:
+
+	the dog	 (noun)
+	ate	 (transitive)
+	the dog  (noun)
+	ate	 (intransitive)
+
+This is because, even though the first production of C<sentence>
+ultimately fails, its initial subrules C<noun> and C<trans> do match,
+and hence they execute their associated actions.
+Then the second production of C<sentence> succeeds, causing the
+actions of the subrules C<noun> and C<intrans> to be executed as well.
+
+On the other hand, if the actions were replaced by C<E<lt>defer:...E<gt>>
+directives:
+
+	sentence: noun trans noun
+		| noun intrans
+
+	noun:	  'the dog'
+			<defer: print "$item[1]\t(noun)\n" >
+	    |	  'the meat'
+			<defer: print "$item[1]\t(noun)\n" >
+
+	trans:	  'ate'
+			<defer: print "$item[1]\t(transitive)\n" >
+
+	intrans:  'ate'
+			<defer: print "$item[1]\t(intransitive)\n" >
+	       |  'barked'
+			<defer: print "$item[1]\t(intransitive)\n" >
+
+the output would be:
+
+	the dog	 (noun)
+	ate	 (intransitive)
+
+since deferred actions are only executed if they were evaluated in
+a production which ultimately contributes to the successful parse.
+
+In this case, even though the first production of C<sentence> caused
+the subrules C<noun> and C<trans> to match, that production ultimately
+failed and so the deferred actions queued by those subrules were subsequently
+disgarded. The second production then succeeded, causing the entire
+parse to succeed, and so the deferred actions queued by the (second) match of
+the C<noun> subrule and the subsequent match of C<intrans> I<are> preserved and 
+eventually executed.
+
+Deferred actions provide a means of improving the performance of a parser,
+by only executing those actions which are part of the final parse-tree
+for the input data. 
+
+Alternatively, deferred actions can be viewed as a mechanism for building 
+(and executing) a
+customized subroutine corresponding to the given input data, much in the
+same way that autoactions (see L<"Autoactions">) can be used to build a
+customized data structure for specific input.
+
+Whether or not the action it specifies is ever executed,
+a C<E<lt>defer:...E<gt>> directive always succeeds, returning the 
+number of deferred actions currently queued at that point.
 
 =back
 

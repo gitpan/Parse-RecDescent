@@ -299,6 +299,11 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 				  Parse::RecDescent::_tracefirst($_[1]),
 				  q{' . $self->{"name"} . '})
 					if defined $::RD_TRACE;
+
+	' . ($parser->{deferrable}
+		? 'my $def_at = @{$thisparser->{deferred}};'
+		: '') .
+	'
 	my $_tok;
 	my $return = undef;
 	my $_matched=0;
@@ -331,15 +336,27 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	{
 		next if $prod->mustfail();
 		$code .= $prod->code($namespace,$self,$parser);
+
+		$code .= $parser->{deferrable}
+				? '		splice
+				@{$thisparser->{deferred}}, $def_at unless $_matched;
+				  '
+				: '';
 	}
 
 	$code .=
 '
         unless ( $_matched || $return )
 	{
+		' .($parser->{deferrable}
+			? '		splice @{$thisparser->{deferred}}, $def_at;
+			  '
+			: '') . '
+
 		$_[1] = $text;	# NOT SURE THIS IS NEEDED
-		Parse::RecDescent::_trace(q{<<Didn\'t match rule>>}, $_[1],q{'
-		. $self->{"name"} .'})
+		Parse::RecDescent::_trace(q{<<Didn\'t match rule>>},
+					 Parse::RecDescent::_tracefirst($_[1]),
+					 q{' . $self->{"name"} .'})
 					if defined $::RD_TRACE;
 		return undef;
 	}
@@ -1029,7 +1046,10 @@ my $code = '
 		' . ($self->{"lookahead"}<0?'if':'unless')
 		. ' ($text =~ s/\A($_toksep)/$lastsep=$1 and ""/e and '
 		. ($checkitempos? 'do {'.Parse::RecDescent::Production::incitempos().' 1} and ' : '')
-		. '  $text =~ s/\A(?:' . $self->{"pattern"} . ')//)
+		. '  do { $_tok = "' . $self->{"pattern"} . '"; 1 } and
+		     substr($text,0,length($_tok)) eq $_tok and
+		     do { substr($text,0,length($_tok)) = ""; 1; }
+		)
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
@@ -1039,10 +1059,10 @@ my $code = '
 			last;
 		}
 		Parse::RecDescent::_trace(q{>>Matched token<< (return value: [}
-						. $& . q{])},
+						. $_tok . q{])},
 						  Parse::RecDescent::_tracefirst($text))
 							if defined $::RD_TRACE;
-		push @item, $&;
+		push @item, $_tok;
 		' . ($self->{"lookahead"} ? '$text = $_savetext;' : '' ) .'
 ';
 
@@ -1332,7 +1352,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.43';
+$VERSION = '1.51';
 
 # BUILDING A PARSER
 
@@ -1372,11 +1392,12 @@ sub Compile($$$$) {
 	my ($class, $name, $file, $grammar) = @_;
 
 	my $self = bless {
-		"rules"     => {},
-		"namespace" => $name,
-		'compiling' => 1,
-		'file'      => $file,
-		"startcode" => '',
+		'rules'     	=> {},
+		'namespace' 	=> $name,
+		'compiling' 	=> 1,
+		'file'      	=> $file,
+		'startcode' 	=> '',
+		'deferrable'	=> 0,
 		}, $class;
 
 	if ($self->Replace($grammar)) {
@@ -1455,6 +1476,7 @@ my $CONDREJECTMK	= '\A\s*<reject:';
 my $RESYNCMK		= '\A\s*<resync>';
 my $RESYNCPATMK		= '\A\s*<resync:';
 my $RULEVARPATMK	= '\A\s*<rulevar:';
+my $DEFERPATMK		= '\A\s*<defer:';
 my $AUTOERRORMK		= '\A\s*<error(\??)>';
 my $MSGERRORMK		= '\A\s*<error(\??):';
 my $UNCOMMITPROD	= $PROD.'\s*(?=<uncommit)';
@@ -1597,7 +1619,7 @@ sub _generate($$$;$)
 			      or  _no_rule("<resync:$code>",$line);
 		}
 		elsif ($grammar =~ m/$RULEVARPATMK/
-			and do { $code = extract_bracketed($grammar,'<') } )
+			and do { $code = extract_codeblock($grammar,'<>{}') } )
 		{
 			_parse("a rule variable specifier", $aftererror,$line,$code);
 			$code =~ /\A\s*<rulevar:(.*)>\Z/s;
@@ -1608,6 +1630,24 @@ sub _generate($$$;$)
 			$item = new Parse::RecDescent::UncondReject($lookahead,$line,$code);
 			$prod and $prod->additem($item)
 			      or  _no_rule($code,$line);
+		}
+		elsif ($grammar =~ m/$DEFERPATMK/
+			and do { $code = extract_codeblock($grammar,'<>{}') } )
+		{
+			_parse("a deferred action specifier", $aftererror,$line,$code);
+			$code =~ s/\A\s*<defer:(.*)>\Z/$1/s;
+			if ($code =~ /\A\s*[^{]|[^}]\s*\Z/)
+			{
+				$code = "{ $code }"
+			}
+
+			$item = new Parse::RecDescent::Directive(
+				      "push \@{\$thisparser->{deferred}}, sub $code;",
+				      $lookahead,$line,"<defer:$code>");
+			$prod and $prod->additem($item)
+			      or  _no_rule("<defer:$code>",$line);
+
+			$self->{deferrable} = 1;
 		}
 		elsif ($grammar =~ s/$COMMITMK//)
 		{
@@ -1947,7 +1987,7 @@ sub AUTOLOAD 	# ($parser, $text; $linenumber)
 	$_[0]->{offsetlinenum} = $_[0]->{lastlinenum};
 	$AUTOLOAD =~ s/$class/$_[0]->{namespace}/;
 	no strict "refs";
-	&$AUTOLOAD($_[0],$text);
+	&{$AUTOLOAD}($_[0],$text,undef,undef,$args);
 }
 
 sub new {
@@ -2130,12 +2170,20 @@ sub AUTOLOAD	# ($parser, $text; $linenum, @args)
 	$_[0]->{offsetlinenum} = $_[0]->{lastlinenum};
 	$_[0]->{fulltext} = $_[1];
 	$_[0]->{fulltextlen} = length $_[1];
+	$_[0]->{deferred} = [];
 	my @args = @_[3..$#_];
 	my $args = sub { [ @args ] };
 				 
 	$AUTOLOAD =~ s/$class/$_[0]->{namespace}/;
 	no strict "refs";
-	&{$AUTOLOAD}($_[0],$text,undef,undef,$args);
+	my $retval = &{$AUTOLOAD}($_[0],$text,undef,undef,$args);
+
+	foreach ( @{$_[0]->{deferred}} )
+	{
+		&$_;
+	}
+
+	return $retval;
 }
 
 sub _parserepeat($$$$$$$$$$)	# RETURNS A REF TO AN ARRAY OF MATCHES
