@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.80 of Parse::RecDescent,
-released January 20, 2001.
+This document describes version 1.90 of Parse::RecDescent,
+released March 25, 2003.
 
 =head1 SYNOPSIS
 
@@ -424,7 +424,8 @@ access to the same item values:
 
 
 The results of named subrules are stored in the hash under each
-subrule's name, whilst all other items are stored under a "named
+subrule's name (including the repetition specifier, if any),
+whilst all other items are stored under a "named
 positional" key that indictates their ordinal position within their item
 type: __STRINGI<n>__, __PATTERNI<n>__, __DIRECTIVEI<n>__, __ACTIONI<n>__:
 
@@ -581,7 +582,7 @@ if you wish to know where a token started (and ended) use something like this:
         rule: token1 token2 startcol token3 endcol token4
                         { print "token3: columns $item[3] to $item[5]"; }
 
-        startcol: // { $thiscolumn }    # NEED THE // TO STEP PAST TOKEN SEP
+        startcol: '' { $thiscolumn }    # NEED THE '' TO STEP PAST TOKEN SEP
         endcol:      { $prevcolumn }
 
 Also see the entry for C<@itempos>.
@@ -633,7 +634,7 @@ Hence, instead of the somewhat tedious and error-prone:
                                  token3: columns $item[7]
                                               to $item[9]" }
 
-        startcol: // { $thiscolumn }    # NEED THE // TO STEP PAST TOKEN SEP
+        startcol: '' { $thiscolumn }    # NEED THE '' TO STEP PAST TOKEN SEP
         endcol:      { $prevcolumn }
 
 it is possible to write:
@@ -753,7 +754,7 @@ a simple parse tree:
 which is equivalent to:
 
     parser = new Parse::RecDescent (q{
-        expression: and_expr '&&' expression
+        expression: and_expr '||' expression
                         { [@item] }
                   | and_expr
                         { [@item] }
@@ -794,7 +795,7 @@ classes for each node (and also eliminating redundant intermediate nodes):
 which is equivalent to:
 
     parser = new Parse::RecDescent (q{
-        expression: and_expr '&&' expression
+        expression: and_expr '||' expression
                         { new expression_node (@item[1..3]) }
                   | and_expr
 
@@ -1435,7 +1436,7 @@ can be moderated in only one respect: if C<$::RD_TRACE> has an
 integer value (I<N>) greater than 1, only the I<N> characters of
 the "current parsing context" (that is, where in the input string we
 are at any point in the parse) is reported at any time.
-
+   > 
 C<$::RD_TRACE> is mainly useful for debugging a grammar that isn't
 behaving as you expected it to. To this end, if C<$::RD_TRACE> is
 defined when a parser is built, any actual parser code which is
@@ -1580,6 +1581,41 @@ only match the string "two dogs dogs dogs" up to the eighth letter. If
 the rule name were "early bound" (that is, evaluated only the first
 time the directive is encountered in a production), the reverse
 behaviour would be expected.
+
+Note that the C<matchrule> directive takes a string that is to be treated
+as a rule name, I<not> as a rule invocation. That is,
+it's like a Perl symbolic reference, not an C<eval>. Just as you can say:
+
+        $subname = 'foo';
+
+	# and later...
+
+        &{$foo}(@args);
+
+but not:
+
+        $subname = 'foo(@args)';
+
+	# and later...
+
+        &{$foo};
+
+likewise you can say:
+
+	$rulename = 'foo';
+
+	# and in the grammar...
+
+	<matchrule:$rulename>[@args]
+
+but not:
+
+	$rulename = 'foo[@args]';
+
+	# and in the grammar...
+
+	<matchrule:$rulename>
+
 
 =item Deferred actions
 
@@ -1755,6 +1791,14 @@ It does this by calling Text::Balanced::extract_codeblock().
 
 If the directive matches text representing a valid Perl code block,
 it returns that text. Otherwise it fails with the usual C<undef> value.
+
+You can also tell it what kind of brackets to use as the outermost
+delimiters. For example:
+
+	arglist: <perl_codeblock ()>
+
+causes an arglist to match a perl code block whose outermost delimiters
+are C<(...)> (rather than the default C<{...}>).
 
 
 =item Constructing tokens

@@ -6,7 +6,9 @@ undef $::RD_WARN;
 
 my $parse = Parse::RecDescent->new(<<'EOGRAMMAR');
 
-line: <rulevar: local %max = (count=>0) >
+{use Tie::Hash; }
+
+line: <rulevar: local %max; tie %max, Tie::StdHash'; %max = (count=>0) >
 
 line: seplist[sep=>',']
     | seplist[sep=>':']

@@ -28,6 +28,7 @@ sub import	# IMPLEMENT PRECOMPILER BEHAVIOUR UNDER:
 
 		my ($sourcefile, $class) = @ARGV;
 
+		local *IN;
 		open IN, $sourcefile
 			or _die("Can't open grammar file '$sourcefile'");
 
@@ -63,8 +64,8 @@ sub Precompile
 			     "to class $class in module file '$modulefile'\n"
 					if $grammar && $sourcefile;
 
-		local $::RD_HINT = 1;
-		$self = Parse::RecDescent->new($grammar,1)
+		# local $::RD_HINT = 1;
+		$self = Parse::RecDescent->new($grammar,1,$class)
 			|| croak("Can't compile bad grammar")
 				if $grammar;
 
@@ -102,13 +103,21 @@ sub TIESCALAR	# ($classname, \$text, $thisparser, $prevflag)
 	      }, $_[0];
 }
 
-sub FETCH    
+my %counter_cache;
+
+sub FETCH
 {
-	my $parser = $_[0]->{parser};
-	my $from = $parser->{fulltextlen}-length(${$_[0]->{text}})-$_[0]->{prev};
-	$parser->{lastlinenum} = $parser->{offsetlinenum}
-			   - Parse::RecDescent::_linecount(substr($parser->{fulltext},$from))
-			   + 1;
+        my $parser = $_[0]->{parser};
+        my $from = $parser->{fulltextlen}-length(${$_[0]->{text}})-$_[0]->{prev}
+;
+
+    unless (exists $counter_cache{$from}) {
+        $parser->{lastlinenum} = $parser->{offsetlinenum}
+		   - Parse::RecDescent::_linecount(substr($parser->{fulltext},$from))
+                   + 1;
+        $counter_cache{$from} = $parser->{lastlinenum};
+    }
+    return $counter_cache{$from};
 }
 
 sub STORE
@@ -353,12 +362,15 @@ eval 'undef &' . $namespace . '::' . $self->{"name"} unless $parser->{saving};
 sub ' . $namespace . '::' . $self->{"name"} .  '
 {
 	my $thisparser = $_[0];
+	use vars q{$tracelevel};
+	local $tracelevel = ($tracelevel||0)+1;
 	$ERRORS = 0;
 	my $thisrule = $thisparser->{"rules"}{"' . $self->{"name"} . '"};
 	
 	Parse::RecDescent::_trace(q{Trying rule: [' . $self->{"name"} . ']},
 				  Parse::RecDescent::_tracefirst($_[1]),
-				  q{' . $self->{"name"} . '})
+				  q{' . $self->{"name"} . '},
+				  $tracelevel)
 					if defined $::RD_TRACE;
 
 	' . ($parser->{deferrable}
@@ -431,14 +443,16 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 		$_[1] = $text;	# NOT SURE THIS IS NEEDED
 		Parse::RecDescent::_trace(q{<<Didn\'t match rule>>},
 					 Parse::RecDescent::_tracefirst($_[1]),
-					 q{' . $self->{"name"} .'})
+					 q{' . $self->{"name"} .'},
+					 $tracelevel)
 					if defined $::RD_TRACE;
 		return undef;
 	}
 	if (!defined($return) && defined($score))
 	{
 		Parse::RecDescent::_trace(q{>>Accepted scored production<<}, "",
-					  q{' . $self->{"name"} .'})
+					  q{' . $self->{"name"} .'},
+					  $tracelevel)
 						if defined $::RD_TRACE;
 		$return = $score_return;
 	}
@@ -448,11 +462,13 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	{
 		Parse::RecDescent::_trace(q{>>Matched rule<< (return value: [} .
 					  $return . q{])}, "",
-					  q{' . $self->{"name"} .'});
+					  q{' . $self->{"name"} .'},
+					  $tracelevel);
 		Parse::RecDescent::_trace(q{(consumed: [} .
 					  Parse::RecDescent::_tracemax(substr($_[1],0,-length($text))) . q{])}, 
 					  Parse::RecDescent::_tracefirst($text),
-					  , q{' . $self->{"name"} .'})
+					  , q{' . $self->{"name"} .'},
+					  $tracelevel)
 	}
 	$_[1] = $text;
 	return $return;
@@ -598,9 +614,9 @@ sub changesskip($)
 
 sub adddirective
 {
-	my ( $self, $whichop, $line ) = @_;
+	my ( $self, $whichop, $line, $name ) = @_;
 	push @{$self->{op}},
-		{ type=>$whichop, line=>$line,
+		{ type=>$whichop, line=>$line, name=>$name,
 		  offset=> scalar(@{$self->{items}}) };
 }
 
@@ -668,6 +684,7 @@ sub enddirective
 			Parse::RecDescent::Operator->new(
 				$op->{type}, $minrep, $maxrep, splice(@{$self->{"items"}}, -3));
 		$self->{items}[-1]->sethashname($self);
+		$self->{items}[-1]{name} = $op->{name};
 	    }
 	}
 }
@@ -745,7 +762,8 @@ sub code($$$$)
 		Parse::RecDescent::_trace(q{Trying production: ['
 					  . $self->describe . ']},
 					  Parse::RecDescent::_tracefirst($_[1]),
-					  q{' . $rule ->{name}. '})
+					  q{' . $rule ->{name}. '},
+					  $tracelevel)
 						if defined $::RD_TRACE;
 		my $thisprod = $thisrule->{"prods"}[' . $self->{"number"} . '];
 		' . (defined $self->{"error"} ? '' : '$text = $_[1];' ) . '
@@ -813,7 +831,8 @@ sub code($$$$)
 		Parse::RecDescent::_trace(q{>>Matched production: ['
 					  . $self->describe . ']<<},
 					  Parse::RecDescent::_tracefirst($text),
-					  q{' . $rule->{name} . '})
+					  q{' . $rule->{name} . '},
+					  $tracelevel)
 						if defined $::RD_TRACE;
 		$_matched = 1;
 		last;
@@ -852,7 +871,8 @@ sub code($$$$)
 '
 		Parse::RecDescent::_trace(q{Trying action},
 					  Parse::RecDescent::_tracefirst($text),
-					  q{' . $rule->{name} . '})
+					  q{' . $rule->{name} . '},
+					  $tracelevel)
 						if defined $::RD_TRACE;
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) .'
 
@@ -864,7 +884,8 @@ sub code($$$$)
 			last;
 		}
 		Parse::RecDescent::_trace(q{>>Matched action<< (return value: [}
-					  . $_tok . q{])}, $text)
+					  . $_tok . q{])},
+					  Parse::RecDescent::_tracefirst($text))
 						if defined $::RD_TRACE;
 		push @item, $_tok;
 		' . ($self->{line}>=0 ? '$item{'. $self->{hashname} .'}=$_tok;' : '' ) .'
@@ -905,7 +926,8 @@ sub code($$$$)
 		Parse::RecDescent::_trace(q{Trying directive: ['
 					. $self->describe . ']},
 					Parse::RecDescent::_tracefirst($text),
-					  q{' . $rule->{name} . '})
+					  q{' . $rule->{name} . '},
+					  $tracelevel)
 						if defined $::RD_TRACE; ' .'
 		$_tok = do { ' . $self->{"code"} . ' };
 		if (defined($_tok))
@@ -960,8 +982,10 @@ sub code($$$$)
 		Parse::RecDescent::_trace(q{>>Rejecting production<< (found '
 					 . $self->describe . ')},
 					 Parse::RecDescent::_tracefirst($text),
-					  q{' . $rule->{name} . '})
+					  q{' . $rule->{name} . '},
+					  $tracelevel)
 						if defined $::RD_TRACE;
+		undef $return;
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) .'
 
 		$_tok = undef;
@@ -1096,7 +1120,8 @@ sub code($$$$)
 my $code = '
 		Parse::RecDescent::_trace(q{Trying terminal: [' . $self->describe
 					  . ']}, Parse::RecDescent::_tracefirst($text),
-					  q{' . $rule->{name} . '})
+					  q{' . $rule->{name} . '},
+					  $tracelevel)
 						if defined $::RD_TRACE;
 		$lastsep = "";
 		$expectation->is(q{' . ($rule->hasleftmost($self) ? ''
@@ -1167,7 +1192,8 @@ my $code = '
 		Parse::RecDescent::_trace(q{Trying terminal: [' . $self->describe
 					  . ']},
 					  Parse::RecDescent::_tracefirst($text),
-					  q{' . $rule->{name} . '})
+					  q{' . $rule->{name} . '},
+					  $tracelevel)
 						if defined $::RD_TRACE;
 		$lastsep = "";
 		$expectation->is(q{' . ($rule->hasleftmost($self) ? ''
@@ -1236,7 +1262,8 @@ my $code = '
 		Parse::RecDescent::_trace(q{Trying terminal: [' . $self->describe
 					  . ']},
 					  Parse::RecDescent::_tracefirst($text),
-					  q{' . $rule->{name} . '})
+					  q{' . $rule->{name} . '},
+					  $tracelevel)
 						if defined $::RD_TRACE;
 		$lastsep = "";
 		$expectation->is(q{' . ($rule->hasleftmost($self) ? ''
@@ -1318,7 +1345,8 @@ sub code($$$$)
 '
 		Parse::RecDescent::_trace(q{Trying subrule: [' . $self->{"subrule"} . ']},
 				  Parse::RecDescent::_tracefirst($text),
-				  q{' . $rule->{"name"} . '})
+				  q{' . $rule->{"name"} . '},
+				  $tracelevel)
 					if defined $::RD_TRACE;
 		if (1) { no strict qw{refs};
 		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
@@ -1331,14 +1359,15 @@ sub code($$$$)
 		. '($thisparser,$text,$repeating,'
 		. ($self->{"lookahead"}?'1':'$_noactions')
 		. ($self->{argcode} ? ",sub { return $self->{argcode} }"
-				   : ',undef')
+				   : ',sub { \\@arg }')
 		. ')))
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			Parse::RecDescent::_trace(q{<<Didn\'t match subrule: ['
 			. $self->{subrule} . ']>>},
 						  Parse::RecDescent::_tracefirst($text),
-						  q{' . $rule->{"name"} .'})
+						  q{' . $rule->{"name"} .'},
+						  $tracelevel)
 							if defined $::RD_TRACE;
 			$expectation->failed();
 			last;
@@ -1348,7 +1377,8 @@ sub code($$$$)
 					. $_tok . q{]},
 					  
 					  Parse::RecDescent::_tracefirst($text),
-					  q{' . $rule->{"name"} .'})
+					  q{' . $rule->{"name"} .'},
+					  $tracelevel)
 						if defined $::RD_TRACE;
 		$item{q{' . $self->{subrule} . '}} = $_tok;
 		push @item, $_tok;
@@ -1361,7 +1391,7 @@ package Parse::RecDescent::Repetition;
 
 sub issubrule ($) { return $_[0]->{"subrule"} }
 sub isterminal { 0 }
-sub sethashname { }
+sub sethashname {  }
 
 sub describe ($)
 {
@@ -1432,7 +1462,8 @@ sub code($$$$)
 '
 		Parse::RecDescent::_trace(q{Trying repeated subrule: [' . $self->describe . ']},
 				  Parse::RecDescent::_tracefirst($text),
-				  q{' . $rule->{"name"} . '})
+				  q{' . $rule->{"name"} . '},
+				  $tracelevel)
 					if defined $::RD_TRACE;
 		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
 				# WAS : 'qq{'.$self->describe.'}' ) . ')->at($text);
@@ -1450,7 +1481,8 @@ sub code($$$$)
 			Parse::RecDescent::_trace(q{<<Didn\'t match repeated subrule: ['
 			. $self->describe . ']>>},
 						  Parse::RecDescent::_tracefirst($text),
-						  q{' . $rule->{"name"} .'})
+						  q{' . $rule->{"name"} .'},
+						  $tracelevel)
 							if defined $::RD_TRACE;
 			last;
 		}
@@ -1459,9 +1491,10 @@ sub code($$$$)
 					. @$_tok . q{ times)},
 					  
 					  Parse::RecDescent::_tracefirst($text),
-					  q{' . $rule->{"name"} .'})
+					  q{' . $rule->{"name"} .'},
+					  $tracelevel)
 						if defined $::RD_TRACE;
-		$item{q{' . $self->describe . '}} = $_tok;
+		$item{q{' . "$self->{subrule}($self->{repspec})" . '}} = $_tok;
 		push @item, $_tok;
 		' . ($self->{"lookahead"} ? '$text = $_savetext;' : '' ) .'
 
@@ -1527,7 +1560,8 @@ sub code($$$$)
 	my $code = '
 		Parse::RecDescent::_trace(q{Trying operator: [' . $self->describe . ']},
 				  Parse::RecDescent::_tracefirst($text),
-				  q{' . $rule->{"name"} . '})
+				  q{' . $rule->{"name"} . '},
+				  $tracelevel)
 					if defined $::RD_TRACE;
 		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
 				# WAS : 'qq{'.$self->describe.'}' ) . ')->at($text);
@@ -1558,7 +1592,7 @@ sub code($$$$)
 			' . $op->code(@_[1..2]) . '
 			' . ($op->isterminal() ? 'pop @item;' : '$backtrack=1;' ) . '
 			' . (ref($op) eq 'Parse::RecDescent::Token'
-				? 'if (defined $1) {push @item, $item{'.$self->{hashname}.'}=$1; $backtrack=1;}'
+				? 'if (defined $1) {push @item, $item{'.($self->{name}||$self->{hashname}).'}=$1; $backtrack=1;}'
 				: "" ) . '
 			' . $rightarg->code(@_[1..2]) . '
 			$savetext = $text;
@@ -1584,7 +1618,7 @@ sub code($$$$)
 			' . $op->code(@_[1..2]) . '
 			$savetext = $text;
 			' . ($op->isterminal() ? 'pop @item;' : "" ) . '
-			' . (ref($op) eq 'Parse::RecDescent::Token' ? 'do { push @item, $item{'.$self->{hashname}.'}=$1; } if defined $1;' : "" ) . '
+			' . (ref($op) eq 'Parse::RecDescent::Token' ? 'do { push @item, $item{'.($self->{name}||$self->{hashname}).'}=$1; } if defined $1;' : "" ) . '
 		  }
 		  $text = $savetext;
 		  pop @item if $backtrack;
@@ -1608,7 +1642,8 @@ sub code($$$$)
 						  . $self->describe
 						  . ']>>},
 						  Parse::RecDescent::_tracefirst($text),
-						  q{' . $rule->{"name"} .'})
+						  q{' . $rule->{"name"} .'},
+						  $tracelevel)
 							if defined $::RD_TRACE;
 			$expectation->failed();
 			last;
@@ -1618,10 +1653,11 @@ sub code($$$$)
 					  . ']<< (return value: [}
 					  . qq{@{$_tok||[]}} . q{]},
 					  Parse::RecDescent::_tracefirst($text),
-					  q{' . $rule->{"name"} .'})
+					  q{' . $rule->{"name"} .'},
+					  $tracelevel)
 						if defined $::RD_TRACE;
 
-		push @item, $item{'.$self->{hashname}.'}=$_tok||[];
+		push @item, $item{'.($self->{name}||$self->{hashname}).'}=$_tok||[];
 
 ';
 	return $code;
@@ -1685,7 +1721,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.80';
+$VERSION = '1.90';
 
 # BUILDING A PARSER
 
@@ -1696,14 +1732,17 @@ sub _nextnamespace()
 	return "Parse::RecDescent::" . $nextnamespace++;
 }
 
-sub new ($$)
+sub new ($$$)
 {
 	my $class = ref($_[0]) || $_[0];
-	local $Parse::RecDescent::compiling = $_[2],
+        local $Parse::RecDescent::compiling = $_[2];
+        my $name_space_name = defined $_[3]
+		? "Parse::RecDescent::".$_[3] 
+		: _nextnamespace();
 	my $self =
 	{
 		"rules"     => {},
-		"namespace" => _nextnamespace(),
+		"namespace" => $name_space_name,
 		"startcode" => '',
 		"localvars" => '',
 		"_AUTOACTION" => undef,
@@ -1714,6 +1753,8 @@ sub new ($$)
 		my $sourcecode = $::RD_AUTOACTION;
 		$sourcecode = "{ $sourcecode }"
 			unless $sourcecode =~ /\A\s*\{.*\}\s*\Z/;
+		$self->{_check}{itempos} =
+			$sourcecode =~ /\@itempos\b|\$itempos\s*\[/;
 		$self->{_AUTOACTION}
 			= new Parse::RecDescent::Action($sourcecode,0,-1)
 	}
@@ -1777,17 +1818,18 @@ my $COMMENT		= '\G\s*(#.*)';
 my $COMMITMK		= '\G\s*<commit>';
 my $UNCOMMITMK		= '\G\s*<uncommit>';
 my $QUOTELIKEMK		= '\G\s*<perl_quotelike>';
-my $CODEBLOCKMK		= '\G\s*<perl_codeblock>';
+my $CODEBLOCKMK		= '\G\s*<perl_codeblock(?:\s+([][()<>{}]+))?>';
 my $VARIABLEMK		= '\G\s*<perl_variable>';
 my $NOCHECKMK		= '\G\s*<nocheck>';
 my $AUTOTREEMK		= '\G\s*<autotree>';
 my $AUTOSTUBMK		= '\G\s*<autostub>';
+my $AUTORULEMK		= '\G\s*<autorule:(.*?)>';
 my $REJECTMK		= '\G\s*<reject>';
 my $CONDREJECTMK	= '\G\s*<reject:';
 my $SCOREMK		= '\G\s*<score:';
 my $AUTOSCOREMK		= '\G\s*<autoscore:';
 my $SKIPMK		= '\G\s*<skip:';
-my $OPMK		= '\G\s*<(left|right)op:';
+my $OPMK		= '\G\s*<(left|right)op(?:=(\'.*?\'))?:';
 my $ENDDIRECTIVEMK	= '\G\s*>';
 my $RESYNCMK		= '\G\s*<resync>';
 my $RESYNCPATMK		= '\G\s*<resync:';
@@ -1917,8 +1959,9 @@ sub _generate($$$;$$)
 
 			if ($grammar =~ m/$OPMK/gco)
 			{
+				# $DB::single=1;
 				_parse("a $1-associative operator directive", $aftererror, $line, "<$1op:...>");
-				$prod->adddirective($1, $line);
+				$prod->adddirective($1, $line,$2||'');
 			}
 			elsif ($grammar =~ m/$UNCOMMITMK/gco)
 			{
@@ -1942,9 +1985,10 @@ sub _generate($$$;$$)
 			}
 			elsif ($grammar =~ m/$CODEBLOCKMK/gco)
 			{
+				my $outer = $1||"{}";
 				_parse("an perl codeblock marker", $aftererror,$line);
 				$item = new Parse::RecDescent::Directive(
-					'Text::Balanced::extract_codeblock($text,undef,$skip);
+					'Text::Balanced::extract_codeblock($text,undef,$skip,\''.$outer.'\');
 					', $lookahead,$line,"<perl_codeblock>");
 				$prod and $prod->additem($item)
 				      or  _no_rule("<perl_codeblock>",$line);
@@ -1977,7 +2021,12 @@ sub _generate($$$;$$)
 			elsif ($grammar =~ m/$AUTOSTUBMK/gco)
 			{
 				_parse("an autostub marker", $aftererror,$line);
-				$::RD_AUTOSTUB = 1;
+				$::RD_AUTOSTUB = "";
+			}
+			elsif ($grammar =~ m/$AUTORULEMK/gco)
+			{
+				_parse("an autorule marker", $aftererror,$line);
+				$::RD_AUTOSTUB = $1;
 			}
 			elsif ($grammar =~ m/$AUTOTREEMK/gco)
 			{
@@ -2224,7 +2273,7 @@ sub _generate($$$;$$)
 				    0, $lookahead, $line) or next;
 
 			$prod->check_pending($line) if $prod;
-			$prod = new Parse::RecDescent::Production($line,1,0);
+			$prod = new Parse::RecDescent::Production($line,1);
 			$rule and $rule->addprod($prod)
 			      or  _no_rule("<uncommit>",$line);
 			$aftererror = 0;
@@ -2331,7 +2380,7 @@ sub _generate($$$;$$)
 					{
 						my $pos = pos $grammar;
 						substr($grammar,$pos,0,
-						       "<leftop: $name $2 $name>(s?) ");
+						       "<leftop='$name(s?)': $name $2 $name>(s?) ");
 
 						pos $grammar = $pos;
 					}
@@ -2355,9 +2404,10 @@ sub _generate($$$;$$)
 					_parse("a one-or-more subrule match", $aftererror,$line,"$code$argcode($1)");
 					if ($2)
 					{
+						# $DB::single=1;
 						my $pos = pos $grammar;
 						substr($grammar,$pos,0,
-						       "<leftop: $name $2 $name> ");
+						       "<leftop='$name(s)': $name $2 $name> ");
 
 						pos $grammar = $pos;
 					}
@@ -2384,7 +2434,7 @@ sub _generate($$$;$$)
 					{
 						my $pos = pos $grammar;
 						substr($grammar,$pos,0,
-						       "<leftop: $name $2 $name>($1) ");
+						       "<leftop='$name($1)': $name $2 $name>($1) ");
 
 						pos $grammar = $pos;
 					}
@@ -2408,7 +2458,7 @@ sub _generate($$$;$$)
 					{
 						my $pos = pos $grammar;
 						substr($grammar,$pos,0,
-						       "<leftop: $name $3 $name>($1..$2) ");
+						       "<leftop='$name($1..$2)': $name $3 $name>($1..$2) ");
 
 						pos $grammar = $pos;
 					}
@@ -2432,7 +2482,7 @@ sub _generate($$$;$$)
 					{
 						my $pos = pos $grammar;
 						substr($grammar,$pos,0,
-						       "<leftop: $name $2 $name>($1..) ");
+						       "<leftop='$name($1..)': $name $2 $name>($1..) ");
 
 						pos $grammar = $pos;
 					}
@@ -2457,7 +2507,7 @@ sub _generate($$$;$$)
 					{
 						my $pos = pos $grammar;
 						substr($grammar,$pos,0,
-						       "<leftop: $name $2 $name>(..$1) ");
+						       "<leftop='$name(..$1)': $name $2 $name>(..$1) ");
 
 						pos $grammar = $pos;
 					}
@@ -2559,6 +2609,7 @@ sub _generate($$$;$$)
 		if (defined $::RD_TRACE)
 		{
 			print STDERR "printing code (", length($code),") to RD_TRACE\n";
+			local *TRACE_FILE;
 			open TRACE_FILE, ">RD_TRACE"
 			and print TRACE_FILE "my \$ERRORS;\n$code"
 			and close TRACE_FILE;
@@ -2649,6 +2700,7 @@ sub _check_grammar ($)
 				}
 				else	# EXPERIMENTAL
 				{
+					my $rule = $::RD_AUTOSTUB || qq{'$call'};
 					_warn(1,"Autogenerating rule: $call")
 					and
 					_hint("A call was made to a subrule
@@ -2656,10 +2708,10 @@ sub _check_grammar ($)
 					       rule was specified. However,
 					       since \$::RD_AUTOSTUB
 					       was defined, a rule stub
-					       ($call : '$call') was
+					       ($call : $rule) was
 					       automatically created.");
 
-					$self->_generate("$call : '$call'",0,1);
+					$self->_generate("$call : $rule",0,1);
 				}
 			}
 		}
@@ -2808,13 +2860,14 @@ $| = 1;
 my $tracemsg;
 my $tracecontext;
 my $tracerulename;
+my $tracelevel;
 
 open (TRACE, ">&STDERR");
 format TRACE =
-|@|||||||||@^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<|
-$tracerulename, '|', $tracemsg
-| ~~       |^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<|
-	    $tracemsg
+@>|@|||||||||@^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<|
+$tracelevel, $tracerulename, '|', $tracemsg
+  | ~~       |^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<|
+              $tracemsg
 .
 
 select TRACE;
@@ -2822,9 +2875,9 @@ $| = 1;
 
 open (TRACECONTEXT, ">&STDERR");
 format TRACECONTEXT =
-|@|||||||||@                                      |^<<<<<<<<<<<<<<<<<<<<<<<<<<<<
- $tracerulename, '|',				   $tracecontext
-| ~~       |                                      |^<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+@>|@|||||||||@                                      |^<<<<<<<<<<<<<<<<<<<<<<<<<<<
+$tracelevel, $tracerulename, '|',	           $tracecontext
+  | ~~       |                                      |^<<<<<<<<<<<<<<<<<<<<<<<<<<<
 						   $tracecontext
 .
 
@@ -2911,13 +2964,16 @@ sub _tracefirst($)
 
 my $lastcontext = '';
 my $lastrulename = '';
+my $lastlevel = '';
 
-sub _trace($;$$)
+sub _trace($;$$$)
 {
 	$tracemsg      = $_[0];
 	$tracecontext  = $_[1]||$lastcontext;
 	$tracerulename = $_[2]||$lastrulename;
+	$tracelevel    = $_[3]||$lastlevel;
 	if ($tracerulename) { $lastrulename = $tracerulename }
+	if ($tracelevel)    { $lastlevel = $tracelevel }
 
 	$tracecontext =~ s/\n/\\n/g;
 	$tracecontext =~ s/\s+/ /g;
@@ -2927,7 +2983,7 @@ sub _trace($;$$)
 	{
 		if ($tracecontext)
 		{
-			$lastcontext = $tracecontext;
+			$lastcontext = _tracefirst($tracecontext);
 			$tracecontext = qq{"$tracecontext"};
 		}
 		else
@@ -2973,12 +3029,10 @@ sub _parse($$$;$)
 	write ERROR;
 }
 
-sub _linecount($)
-{
-	my ($pos,$count) = ((pos $_[0]||0)-1, 0);
-	$count++ until ($pos=index($_[0],"\n",$pos+1))<0;
-	return $count;
+sub _linecount($) {
+	scalar substr($_[0], pos $_[0]||0) =~ tr/\n//
 }
+
 
 package main;
 

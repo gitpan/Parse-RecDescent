@@ -5,16 +5,10 @@
 use strict;
 use Parse::RecDescent; $::RD_HINT = 1;
 
-sub Parse::RecDescent::evalop
-{
-	my ($list) = @_;
-	my $val = shift @$list;
-	while (@$list)
-	{
-		my ($op, $arg2) = splice @$list, 0, 2;
-		$op->($val,$arg2);
-	}
-	return $val;
+sub Parse::RecDescent::evalop {
+	$_[0][0] = $_[0][$_+1](@{$_[0]}[0,$_+2])
+		for map 2*($_-1), 1..@{$_[0]}/2;
+	return $_[0][0];
 }
 
 my $parse = Parse::RecDescent->new(<<'EndGrammar');
@@ -42,10 +36,16 @@ my $parse = Parse::RecDescent->new(<<'EndGrammar');
 EndGrammar
 
 while (<DATA>) {
-  print $parse->main($_), "\n";
+  print "$_ = ", $parse->main($_), "\n";
+}
+
+while (print "> " and defined($_=<>)) {
+  print "= ", $parse->main($_), "\n";
 }
 
 __DATA__
+2+3
+2*3
 +1-1+1-1+1-1+1-1+1
 7*7-6*8
 121/(121/11)/121*11

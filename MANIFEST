@@ -40,6 +40,8 @@ demo/demo_simplequery.pl
 demo/demo_template.pl
 demo/demo_textgen.pl
 demo/demo_whoson.pl
+demo/demo_restructure_easy.pl
+demo/demo_restructure_painful.pl
 tutorial/tutorial.html
 tutorial/TPJ-PRD-proc.gif
 tutorial/TPJ-yacc-proc.gif

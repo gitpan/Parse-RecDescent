@@ -15,7 +15,7 @@ sub new
 {
 	bless Parse::RecDescent->new(<<'EOGRAMMAR'), XML2DS;
 
-	xml:  unitag
+	xml:  unitag(?)
 	   |  tag content[$item[1]](s) endtag[$item[1]]
 					{ bless $item[2], $item[1]}
 

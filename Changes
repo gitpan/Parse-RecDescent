@@ -418,15 +418,68 @@ Revision history for Perl extension Parse::RecDescent.
 	- Squelched bug in (not) handling invalid directives (thanks John)
 
 
-1.80	Mon Sep  4 12:29:28 2000
+1.80	Sat Jan 20 05:02:35 2001
 
 	- Fixed Save so that saved parsers can still be used after saving
 	  (thanks Supun)
 
 	- Fixed bug in line number tracking (thanks Theo)
 
-1.80	Sat Jan 20 05:02:35 2001
-
 	- Fixed bug in (s /pat/) shorthand (thanks Julien)
 
 	- Improved docs on <rulevar> (thanks Steve)
+
+
+1.90	Tue Mar 25 01:17:38 2003
+
+
+	- BACKWARDS INCOMPATIBLE CHANGE: The key of an %item entry for
+	  a repeated subrule now includes the repetition specifier.
+	  For example, in:
+
+		sentence: subject verb word(s)
+
+	  the various matched items will be stored in $item{'subject'},
+	  $item{'verb'}, and $item{'word(s)'} (i.e. *not* in $item{'word'},
+	  as it would have been in previous versions of the module).
+	  (thanks Anthony)
+
+	- Changed argument passing behaviour. If no arguments specified
+	  for subrule, it is now passed current rule's @arg instead. To 
+	  get old (no arguments) behaviour use: subrule[]
+
+	- Fixed bug in <reject> handling: failed to reject if $return
+	  had been set. (thanks Nick)
+
+	- Added two useful demos of restructuring nested data (thanks Marc)
+
+	- Fixed doc bug re use of // (thanks Randal)
+
+	- Localized filehandles, like a good citizen should
+
+	- Misc doc bug fixes (thanks all)
+
+	- Fixed Text::Balance dependency in Makefile.PL (thanks Dominique)
+
+	- Fixed bug that @itempos wasn't set up if referred to only in
+	  an autoaction. (thanks Eric)
+
+	- Fixed truncation bug in tracing contexts
+
+	- Dramatically improved speed of line counting (thanks John)
+
+	- Made item(s) and item(s /,/) behave consistently wrt %item
+	  (thanks Marcel)
+
+	- Added prototype <autorule:...> handling
+
+	- Added outer block markers for <perl_codeblock>
+
+	- Fixed multi-grammar precompilation (thanks Dominique)
+
+	- Fixed numerous snafus in tutorial.html (thanks Ralph)
+
+	- Added nesting level information to traces
+
+	- Fixed resetting of $text after an <uncommit> rule.
+

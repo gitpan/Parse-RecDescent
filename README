@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.80 of Parse::RecDescent
+                 Release of version 1.90 of Parse::RecDescent
 ==============================================================================
 
 
@@ -81,12 +81,60 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.80
+CHANGES IN VERSION 1.90
 
 
-	- Fixed bug in (s /pat/) shorthand (thanks Julien)
 
-	- Improved docs on <rulevar> (thanks Steve)
+	- BACKWARDS INCOMPATIBLE CHANGE: The key of an %item entry for
+	  a repeated subrule now includes the repetition specifier.
+	  For example, in:
+
+		sentence: subject verb word(s)
+
+	  the various matched items will be stored in $item{'subject'},
+	  $item{'verb'}, and $item{'word(s)'} (i.e. *not* in $item{'word'},
+	  as it would have been in previous versions of the module).
+	  (thanks Anthony)
+
+	- Changed argument passing behaviour. If no arguments specified
+	  for subrule, it is now passed current rule's @arg instead. To 
+	  get old (no arguments) behaviour use: subrule[]
+
+	- Fixed bug in <reject> handling: failed to reject if $return
+	  had been set. (thanks Nick)
+
+	- Added two useful demos of restructuring nested data (thanks Marc)
+
+	- Fixed doc bug re use of // (thanks Randal)
+
+	- Localized filehandles, like a good citizen should
+
+	- Misc doc bug fixes (thanks all)
+
+	- Fixed Text::Balance dependency in Makefile.PL (thanks Dominique)
+
+	- Fixed bug that @itempos wasn't set up if referred to only in
+	  an autoaction. (thanks Eric)
+
+	- Fixed truncation bug in tracing contexts
+
+	- Dramatically improved speed of line counting (thanks John)
+
+	- Made item(s) and item(s /,/) behave consistently wrt %item
+	  (thanks Marcel)
+
+	- Added prototype <autorule:...> handling
+
+	- Added outer block markers for <perl_codeblock>
+
+	- Fixed multi-grammar precompilation (thanks Dominique)
+
+	- Fixed numerous snafus in tutorial.html (thanks Ralph)
+
+	- Added nesting level information to traces
+
+	- Fixed resetting of $text after an <uncommit> rule.
+
 
 
 ==============================================================================
@@ -94,8 +142,5 @@ CHANGES IN VERSION 1.80
 AVAILABILITY
 
 Parse::RecDescent has been uploaded to the CPAN
-and is also available from:
-
-	http://www.csse.monash.edu.au/~damian/CPAN/Parse-RecDescent.tar.gz
 
 ==============================================================================

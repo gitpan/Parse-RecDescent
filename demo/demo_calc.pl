@@ -4,7 +4,7 @@ use Parse::RecDescent;
 
 sub evalop
 {
-	my (@list) = @{[@{$_[0]}]};
+	my (@list) = @{$_[0]};
 	my $val = shift(@list)->();
 	while (@list)
 	{
