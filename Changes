@@ -483,3 +483,8 @@ Revision history for Perl extension Parse::RecDescent.
 
 	- Fixed resetting of $text after an <uncommit> rule.
 
+
+
+1.91	Fri Mar 28 23:20:28 2003
+
+	- Updated Text::Balanced to fix various bugs
