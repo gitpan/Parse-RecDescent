@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.93 of Parse::RecDescent,
-released April  2, 2003.
+This document describes version 1.94 of Parse::RecDescent,
+released April  9, 2003.
 
 =head1 SYNOPSIS
 

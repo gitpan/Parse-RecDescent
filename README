@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.93 of Parse::RecDescent
+                 Release of version 1.94 of Parse::RecDescent
 ==============================================================================
 
 
@@ -81,10 +81,10 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.93
+CHANGES IN VERSION 1.94
 
 
-	- Fixed fatal error with $tracelevel (thanks everyone)
+	- Replaced 'our' with 'use vars' to reinstate 5.005 compatibility.
 
 
 ==============================================================================

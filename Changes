@@ -498,3 +498,8 @@ Revision history for Perl extension Parse::RecDescent.
 1.93	Wed Apr  2 22:25:14 2003
 
 	- Fixed fatal error with $tracelevel (thanks everyone)
+
+
+1.94	Wed Apr  9 08:29:33 2003
+
+	- Replaced 'our' with 'use vars' to reinstate 5.005 compatibility.
