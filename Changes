@@ -488,3 +488,8 @@ Revision history for Perl extension Parse::RecDescent.
 1.91	Fri Mar 28 23:20:28 2003
 
 	- Updated Text::Balanced to fix various bugs
+
+
+1.92	Wed Apr  2 04:45:37 2003
+
+	- Removed Text::Balanced from distribution (now a prereq only)

@@ -50,5 +50,3 @@ tutorial/TPJ_tree.gif
 test.pl
 lib/Parse/RecDescent.pod
 lib/Parse/RecDescent.pm
-lib/Text/Balanced.pod
-lib/Text/Balanced.pm
