@@ -191,3 +191,13 @@ Revision history for Perl extension Parse::RecDescent.
 	  See new documentation.
 
 	- Several trivial lexical changes to make xemacs happy
+
+
+1.41	Mon Aug 10 14:52:53 1998
+
+	- Enhanced POD in response to user feedback
+
+	- Fixed subtle bug in Text::Balanced::extract_codeblock.
+	  It only bit when '(?)' appeared in implicit subrules
+
+	- Added ability to pass args to the start-rule.

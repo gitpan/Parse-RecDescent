@@ -1324,7 +1324,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.35';
+$VERSION = '1.41';
 
 # BUILDING A PARSER
 
@@ -1509,8 +1509,7 @@ sub _generate($$$;$)
 			      or  $self->_addstartcode($code);
 		}
 		elsif ($grammar =~ m/$IMPLICITSUBRULE/
-			and do {($code,$grammar) = extract_codeblock($grammar,
-				'{('); $code })
+			and do {($code,$grammar) = extract_codeblock($grammar,'{(',undef,1); $code })
 		{
 			$code =~ s/\A\s*\(|\)\Z//g;
 			_parse("an implicit subrule", $aftererror, $line,
@@ -1951,7 +1950,7 @@ sub new {
 _STATIC_
 
 
-	print $handle <<"_STUFF_";
+	print $handle <<"_STUFF_" ;
 	bless {
 	"namespace" => q{$self->{"namespace"}},
 	"tokensep" => @{[defined $self->{"tokensep"} ? 'q{$self->{"tokensep"}' : 'undef']},
@@ -2112,7 +2111,7 @@ sub _code($)
 
 # EXECUTING A PARSE....
 
-sub AUTOLOAD	# ($parser, $text; $linenum)
+sub AUTOLOAD	# ($parser, $text; $linenum, @args)
 {
 	die "Could not find method: $AUTOLOAD\n" unless ref $_[0];
 	my $class = ref($_[0]) || $_[0];
@@ -2121,10 +2120,12 @@ sub AUTOLOAD	# ($parser, $text; $linenum)
 	$_[0]->{offsetlinenum} = $_[0]->{lastlinenum};
 	$_[0]->{fulltext} = $_[1];
 	$_[0]->{fulltextlen} = length $_[1];
+	my @args = @_[3..$#_];
+	my $args = sub { [ @args ] };
 				 
 	$AUTOLOAD =~ s/$class/$_[0]->{namespace}/;
 	no strict "refs";
-	&$AUTOLOAD($_[0],$text);
+	&{$AUTOLOAD}($_[0],$text,undef,undef,$args);
 }
 
 sub _parserepeat($$$$$$$$$$)	# RETURNS A REF TO AN ARRAY OF MATCHES

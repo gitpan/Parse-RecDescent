@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.35 of Parse::RecDescent,
-released June 24, 1998.
+This document describes version 1.41 of Parse::RecDescent,
+released August 10, 1998.
 
 =head1 SYNOPSIS
 
@@ -65,7 +65,7 @@ released June 24, 1998.
 =head2 Overview
 
 Parse::RecDescent incrementally generates top-down recursive-descent text
-parsers from simple yacc-like grammar specifications. It provides:
+parsers from simple I<yacc>-like grammar specifications. It provides:
 
 =over 4
 
@@ -166,6 +166,24 @@ text. The productions of a rule being matched are tried in the same
 order that they appear in the original grammar, and the first matching
 production terminates the match attempt (successfully). If all
 productions are tried and none matches, the match attempt fails.
+
+Note that this behaviour is quite different from the "prefer the longer match"
+behaviour of I<yacc>. For example, if I<yacc> were parsing the rule:
+
+	seq : 'A' 'B'
+	    | 'A' 'B' 'C'
+
+upon matching "AB" it would look ahead to see if a 'C' is next and, if
+so, will match the second production in preference to the first. In
+other words, I<yacc> effectively tries all the productions of a rule
+breadth-first in parallel, and selects the "best" match, where "best"
+means longest (note that this is a gross simplification of the true
+behaviour of I<yacc> but it will do for our purposes).
+
+In contrast, C<Parse::RecDescent> tries each production depth-first in
+sequence, and selects the "best" match, where "best" means first. This is
+the fundamental difference between "bottom-up" and "recursive descent"
+parsing.
 
 Each successfully matched item in a production is assigned a value,
 which can be accessed in subsequent actions within the same
@@ -464,6 +482,13 @@ resync'ing C<$thisline>, the parser's line counter mechanism will
 usually be corrupted.
 
 Also see the entry for C<@itempos>.
+
+The line number can be set to values other than 1, by calling the start
+rule with a second argument. For example:
+
+	$parser = new Parse::RecDescent ($grammar);
+
+	$parser->input($text, 10);	# START LINE NUMBERS AT 10
 
 
 =item C<$thiscolumn> and C<$prevcolumn>
@@ -1422,6 +1447,24 @@ by passing them a value which does not change on each repetition. For example:
 	animal:	/$arg[0]/ { $::species = 'cats' }
 
 
+Arguments can also be passed to the start rule, simply by appending them
+to the argument list with which the start rule is called (I<after> the
+"line number" parameter). For example, given:
+
+	$parser = new Parse::RecDescent ( $grammar );
+
+	$parser->data($text, 1, "str", 2, \@arr);
+
+	#             ^^^^^  ^  ^^^^^^^^^^^^^^^
+	#               |    |         |
+	# TEXT TO BE PARSED  |         |
+	# STARTING LINE NUMBER         |
+	# ELEMENTS OF @arg WHICH IS PASSED TO RULE data
+
+then within the productions of the rule C<data>, the array C<@arg> will contain
+C<("str", 2, \@arr)>.
+
+
 =head2 Alternations
 
 Alternations are implicit (unnamed) rules defined as part of a production. An
@@ -1526,7 +1569,21 @@ which allows the user to change the abort key binding, but not to unbind it.
 
 The careful use of such constructs makes it possible to reconfigure a
 a running parser, eliminating the need for semantic feedback by
-providing syntactic feedback instead.
+providing syntactic feedback instead. However, as currently implemented,
+C<Replace()> and C<Extend()> have to regenerate and re-C<eval> the
+entire parser whenever they are called. This makes them quite slow for
+large grammars.
+
+In such cases, the judicious use of an interpolated regex is likely to
+be far more efficient:
+
+	typedef: 'typedef' type_name/ identifier ';'
+		       { $thisparser->{local}{type_name} .= "|$item[3]" }
+	       | <error>
+
+	identifier: ...!type_name /[A-Za-z_]w*/
+
+	type_name: /$thisparser->{local}{type_name}/
 
 
 =head2 A Metagrammar for C<Parse::RecDescent>

@@ -8,21 +8,23 @@ package Text::Balanced;
 use Exporter;
 use vars qw { $VERSION @ISA %EXPORT_TAGS };
 
-$VERSION	= 1.25;
+$VERSION = '1.40';
 @ISA		= qw ( Exporter );
 		     
 %EXPORT_TAGS	= ( ALL => [ qw(
+				&delimited_pat
 				&extract_delimited
 				&extract_bracketed
 				&extract_quotelike
 				&extract_codeblock
 				&extract_variable
+				&extract_tagged
 			       ) ] );
 
 Exporter::export_ok_tags('ALL');
 
 # PAY NO ATTENTION TO THE TRACE BEHIND THE CURTAIN
-# sub _trace($) { print $_[0], "\n" if defined $Balanced::TRACE; }
+# sub _trace($) { print $_[0], "\n"; }
 sub _trace($) {}
 
 # HANDLE RETURN VALUES IN VARIOUS CONTEXTS
@@ -44,13 +46,34 @@ sub _succeed
 	return undef;		# VOID CONTEXT
 }
 
+# BUILD A PATTERN MATCHING A SIMPLE DELIMITED STRING
+
+sub delimited_pat($;$)  # ($delimiters;$escapes)
+{
+	my ($dels, $escs) = @_;
+	return "" unless $dels =~ /\S/;
+	$escs = '\\' unless $escs;
+	my @pat = ();
+	my $i;
+	my $defesc = substr($escs,-1);
+	for ($i=0; $i<length $dels; $i++)
+	{
+		my $del = quotemeta substr($dels,$i,1);
+		my $esc = quotemeta (substr($escs||'',$i,1) || $defesc);
+		push @pat, "$del(?:$esc$del|(?!$del).)*$del";
+	}
+	my $pat = join '|', @pat;
+	return "(?:$pat)";
+}
+
+
 # THE EXTRACTION FUNCTIONS
 
 sub extract_delimited (;$$$)
 {
 	my $text = defined $_[0] ? $_[0] : $_;
 	my @fail = (wantarray,undef,$text);
-	my $del  = defined $_[1] ? $_[1] : q{'"`};
+	my $del  = defined $_[1] ? $_[1] : qq{\'\"\`};
 	my $pre  = defined $_[2] ? $_[2] : '\s*';
 	eval "'' =~ /$pre/; 1" or return _fail @fail;
 	return _succeed (wantarray,(defined $_[0] ? $_[0] : $_),$2,$5,$1)
@@ -71,6 +94,10 @@ sub extract_bracketed (;$$$)
 		{ $@ = "Did not find prefix: /$pre/"; return _fail @fail; }
 
 	$pre = $1;
+	my $qdel = "";
+	$ldel =~ s/'//g and $qdel .= q{'};
+	$ldel =~ s/"//g and $qdel .= q{"};
+	$ldel =~ s/`//g and $qdel .= q{`};
 	$ldel =~ tr/[](){}<>\0-\377/[[(({{<</ds;
 	my $rdel = $ldel;
 
@@ -106,6 +133,12 @@ sub extract_bracketed (;$$$)
 			          return _fail @fail; }
 			last if $#nesting < 0;
 		}
+		elsif ($qdel && $text =~ m/\A([$qdel])/)
+		{
+			$text =~ s/\A([$1])(\\\1|(?!\1).)*\1//s and next;
+			$@ = "Unmatched embedded quote ($1)";
+		        return _fail @fail;
+		}
 
 		else { $text =~ s/.//s }
 	}
@@ -119,6 +152,124 @@ sub extract_bracketed (;$$$)
 			substr($orig,$prelen,length($orig)-length($text)-$prelen),
 			$text,
 		        $pre;
+}
+
+sub revbracket($)
+{
+	my $brack = reverse $_[0];
+	$brack =~ tr/[({</])}>/;
+	return $brack;
+}
+
+my $XMLNAME = q{[a-zA-Z_:][a-zA-Z_:.-]*};
+
+sub extract_tagged (;$$$$$)
+	   # ($text, $opentag, $closetag, $pre, \%options)
+{
+	my $text = defined $_[0] ? $_[0] : defined $_ ? $_ : '';
+	my $orig = $text;
+	my $ldel = $_[1];
+	my $rdel = $_[2];
+	my $pre  = defined $_[3] ? $_[3] : '\s*';
+	my %options = defined $_[4] ? %{$_[4]} : ();
+	my @bad  = defined $options{reject} ? @{$options{reject}} : ();
+	my @ignore  = defined $options{ignore} ? @{$options{ignore}} : ();
+	my $omode = defined $options{fail} ? $options{fail} : '';
+	my $bad  = join('|', @bad);
+	my $ignore  = join('|', @ignore);
+	my @fail = (wantarray,undef,$text);
+	$@ = undef;
+
+	unless ($text =~ s/\A($pre)//s)
+		{ $@ = "Did not find prefix: /$pre/"; return _fail @fail; }
+
+	$pre = $1;
+	my $prelen = length $pre;
+
+	if (!defined $ldel) { $ldel = '<\w+(?:' . delimited_pat(q{'"}) . '|[^>])*>'; }
+
+	unless ($text =~ s/\A($ldel)//s)
+		{ $@ = "Did not find opening tag: /$ldel/"; return _fail @fail; }
+
+	my $ldellen = length($1);
+	my $rdellen = 0;
+
+	if (!defined $rdel)
+	{
+		$rdel = $1;
+		unless ($rdel =~ s/\A([[(<{]+)($XMLNAME).*/ "$1\/$2". revbracket($1) /es)
+		{
+			$@ = "Unable to construct closing tag to match: /$ldel/";
+			return _fail @fail;
+		}
+	}
+
+	my ($nexttok, $fail);
+	while (length $text)
+	{
+		_trace("at: $text");
+		next if $text =~ s/\A\\.//s;
+
+		if ($text =~ s/\A($rdel)//s )
+		{
+			$rdellen = length $1;
+			goto matched;
+		}
+		elsif ($ignore && $text =~ s/\A(?:$ignore)//s)
+		{
+			next;
+		}
+		elsif ($bad && $text =~ m/\A($bad)/s)
+		{
+			goto short if ($omode eq 'PARA' || $omode eq 'MAX');
+			$@ = "Found invalid nested tag: $1";
+			return _fail @fail;
+		}
+		elsif ($text =~ m/\A($ldel)/s)
+		{
+			if (!defined extract_tagged($text, @_[1..$#_]))
+			{
+				goto short if ($omode eq 'PARA' || $omode eq 'MAX');
+				$@ = "Found unbalanced nested tag: $1";
+				return _fail @fail;
+			}
+		}
+		else { $text =~ s/.//s }
+	}
+
+short:
+	if ($omode eq 'PARA')
+	{
+		my $textlen = length($text);
+		my $init = ($textlen) ? substr($orig,0,-$textlen)
+				      : substr($orig,0);
+		$init =~ s/\A(.*?\n)([ \t]*\n.*)\Z/$1/s;
+		$text = ($2||'').$text;
+	}
+	elsif ($omode ne 'MAX')
+	{
+		goto failed;
+	}
+
+matched:
+	my $matched = substr($orig,$prelen,length($orig)-length($text)-$prelen);
+	_trace("extracted: $matched");
+	return _succeed wantarray,
+			(defined $_[0] ? $_[0] : $_),
+			$matched,
+			$text,
+			$pre,
+			substr($matched,0,$ldellen)||'',
+			($rdellen)
+				? substr($matched,$ldellen,-$rdellen)
+				: substr($matched,$ldellen),
+			($rdellen)
+				? substr($matched,-$rdellen)
+				: '';
+
+failed:
+	$@ = "Did not find closing tag" unless $@;
+	return _fail @fail;
 }
 
 sub extract_variable (;$$)
@@ -146,12 +297,13 @@ sub extract_variable (;$$)
 			$pre;
 }
 
-sub extract_codeblock (;$$$)
+sub extract_codeblock (;$$$$)
 {
 	my $text = defined $_[0] ? $_[0] : defined $_ ? $_ : '';
 	my $orig = $text;
 	my $del  = defined $_[1] ? $_[1] : '{';
 	my $pre  = defined $_[2] ? $_[2] : '\s*';
+	my $rd   = $_[3];
 	my ($ldel, $rdel) = ($del, $del);
 	$ldel =~ tr/[]()<>{}\0-\377/[[((<<{{/ds;
 	$rdel =~ tr/[]()<>{}\0-\377/]]))>>}}/ds;
@@ -172,6 +324,11 @@ sub extract_codeblock (;$$$)
 	while (length $text)
 	{
 		$matched = '';
+		if ($rd && $text =~ s#\A(\Q(?)\E|\Q(s?)\E)##)
+		{
+			$patvalid = 0;
+			next;
+		}
 		if ($text =~ s/\A\s*$rdel//)
 		{
 			$matched = ($1 eq $closing);
@@ -184,7 +341,7 @@ sub extract_codeblock (;$$$)
 			last;
 		}
 
-		if ($text =~ s#\A\s*(=~|split|grep|map|return|;)##)
+		if ($text =~ s!\A\s*(=~|split|grep|map|return|;)!!)
 		{
 			$patvalid = 1;
 			next;
@@ -196,9 +353,9 @@ sub extract_codeblock (;$$$)
 			next;
 		}
 
-		if ($text =~ m#\A\s*(m|s|qq|qx|qw|q|tr|y)\b\s*\S#
-		 or $text =~ m#\A\s*["'`]#
-		 or $patvalid and $text =~ m#\A\s*[/?]#)
+		if ($text =~ m!\A\s*(m|s|qq|qx|qw|q|tr|y)\b\s*\S!
+		 or $text =~ m!\A\s*[\"\'\`]!
+		 or $patvalid and $text =~ m!\A\s*[/?]!)
 		{
 			_trace("Trying quotelike at [".substr($text,0,30)."]");
 			($matched,$text) = extract_quotelike($text);
@@ -209,7 +366,7 @@ sub extract_codeblock (;$$$)
 		if ($text =~ m/\A\s*$ldel/)
 		{
 			_trace("Trying codeblock at [".substr($text,0,30)."]");
-			($matched,$text) = extract_codeblock($text,$del);
+			($matched,$text) = extract_codeblock($text,$del,undef,$rd);
 			if ($matched) { $patvalid = 1; next; }
 			_trace("...codeblock failed");
 			$@ = "Nested codeblock failed to balance from \""
@@ -266,14 +423,14 @@ sub extract_quotelike (;$$)
 	$pre = $1;
 	my $orig = $text;
 
-	if ($text =~ m#\A([/?"'`])#)
+	if ($text =~ m!\A([/?\"\'\`])!)
 	{
 		$ldel1= $rdel1= $1;
 		my $matched;
 		($matched,$text) = extract_delimited($text, $ldel1);
 	        return _fail @fail unless $matched;
 		my $mods = '';
-		if ($ldel1 =~ m#[/]()#) 
+		if ($ldel1 =~ m![/]()!) 
 			{ $text =~ s/\A($mods{none})// and $mods = $1; }
 		return _succeed wantarray,
 			(defined $_[0] ? $_[0] : $_),
@@ -289,7 +446,7 @@ sub extract_quotelike (;$$)
 			);
 	}
 
-	unless ($text =~ s#\A(m|s|qq|qx|qw|q|tr|y)\b(?=\s*\S)##s)
+	unless ($text =~ s!\A(m|s|qq|qx|qw|q|tr|y)\b(?=\s*\S)!!s)
 	{
 		$@ = "No quotelike function found after prefix: \"$pre\"";
 		return _fail @fail
