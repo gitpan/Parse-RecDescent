@@ -1,5 +1,5 @@
 ==============================================================================
-                 Release of version 1.41 of Parse::RecDescent
+                 Release of version 1.42 of Parse::RecDescent
 ==============================================================================
 
 DESCRIPTION
@@ -79,15 +79,22 @@ COPYRIGHT
 
 ==============================================================================
 
-CHANGES IN VERSION 1.41
+CHANGES IN VERSION 1.42
 
 
-	- Enhanced POD in response to user feedback
+	- Added a test.pl
 
-	- Fixed subtle bug in Text::Balanced::extract_codeblock.
-	  It only bit when '(?)' appeared in implicit subrules
+	- Modified behaviour of repetitions, so that the results
+          of repeated subrules which succeed but don't consume are
+          preserved (at least up to the minimal number of repetitions)
 
-	- Added ability to pass args to the start-rule.
+	- Fixed bug: @itempos now not incorrectly reset if grammar
+	  	     contained alternations
+
+	- Fixed bug: Embedded unmatched '}' in regex tokens now works
+		     correctly
+
+	- Miscellaneous tweaks to RecDescent.pod (e.g. updated meta-grammar)
 
 
 ==============================================================================

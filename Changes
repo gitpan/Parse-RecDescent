@@ -201,3 +201,20 @@ Revision history for Perl extension Parse::RecDescent.
 	  It only bit when '(?)' appeared in implicit subrules
 
 	- Added ability to pass args to the start-rule.
+
+
+1.42	Fri Aug 14 15:45:22 1998
+
+	- Added a test.pl
+
+	- Modified behaviour of repetitions, so that the results
+          of repeated subrules which succeed but don't consume are
+          preserved (at least up to the minimal number of repetitions)
+
+	- Fixed bug: @itempos now not incorrectly reset if grammar
+	  	     contained alternations
+
+	- Fixed bug: Embedded unmatched '}' in regex tokens now works
+		     correctly
+
+	- Miscellaneous tweaks to RecDescent.pod (e.g. updated meta-grammar)

@@ -16,6 +16,7 @@ demo_parsetree.pl
 demo_selfmod.pl
 demo_simple.pl
 demo_template.pl
+test.pl
 lib/Parse/RecDescent.pod
 lib/Parse/RecDescent.pm
 lib/Text/Balanced.pod

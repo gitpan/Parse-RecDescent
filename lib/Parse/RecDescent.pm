@@ -343,13 +343,19 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 					if defined $::RD_TRACE;
 		return undef;
 	}
-	Parse::RecDescent::_trace(q{>>Matched rule<< (return value: [} .
-				  Parse::RecDescent::_tracemax(substr($_[1],0,-length($text))) . q{])}, 
-				  Parse::RecDescent::_tracefirst($text),
-				  , q{' . $self->{"name"} .'})
-					if defined $::RD_TRACE;
+	$return = $item[$#item] unless defined $return;
+	if (defined $::RD_TRACE)
+	{
+		Parse::RecDescent::_trace(q{>>Matched rule<< (return value: [} .
+					  $return . q{])}, "",
+					  q{' . $self->{"name"} .'});
+		Parse::RecDescent::_trace(q{(consumed: [} .
+					  Parse::RecDescent::_tracemax(substr($_[1],0,-length($text))) . q{])}, 
+					  Parse::RecDescent::_tracefirst($text),
+					  , q{' . $self->{"name"} .'})
+	}
 	$_[1] = $text;
-	return defined($return)?$return:$item[$#item];
+	return $return;
 }
 ';
 
@@ -817,6 +823,8 @@ sub new ($$$$$$)
 	else		  { $desc = "m$ldel$pattern$rdel$mod" }
 	$desc =~ s/\\/\\\\/g;
 	$desc =~ s/\$$/\\\$/g;
+	$desc =~ s/}/\\}/g;
+	$desc =~ s/{/\\{/g;
 
 	if (!eval "no strict;
 		   local \$SIG{__WARN__} = sub {0};
@@ -1324,7 +1332,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.41';
+$VERSION = '1.42';
 
 # BUILDING A PARSER
 
@@ -1465,8 +1473,10 @@ sub _generate($$$;$)
 	my $lookahead = 0;
 	my $lookaheadspec = "";
 	$lines = _linecount($grammar) unless $lines;
-	$self->{_checktoksep} = ($grammar =~ /tokensep/);
-	$self->{_checkitempos} = ($grammar =~ /\@itempos\b|\$itempos\s*\[/);
+	$self->{_checktoksep} = ($grammar =~ /tokensep/)
+		unless $self->{_checktoksep};
+	$self->{_checkitempos} = ($grammar =~ /\@itempos\b|\$itempos\s*\[/)
+		unless $self->{_checkitempos};
 	my $line;
 
 	my $rule = undef;
@@ -2145,8 +2155,8 @@ sub _parserepeat($$$$$$$$$$)	# RETURNS A REF TO AN ARRAY OF MATCHES
 			$text = $_savetext;
 			last;
 		}
+		push @tokens, $_tok if defined $_tok;
 		last if ++$reps >= $min and $prevtextlen == length $text;
-		push @tokens, $_tok;
 	}
 
 	do { $_[6]->failed(); return undef} if $reps<$min;

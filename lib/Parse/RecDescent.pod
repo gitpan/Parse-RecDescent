@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.41 of Parse::RecDescent,
-released August 10, 1998.
+This document describes version 1.42 of Parse::RecDescent,
+released August 14, 1998.
 
 =head1 SYNOPSIS
 
@@ -221,6 +221,11 @@ of times. The available specifiers are:
 		subrule(N..M)	# Match between N and M times
 		subrule(..M)	# Match between 1 and M times
 		subrule(N..)	# Match at least N times
+
+Repeated subrules keep matching until either the subrule fails to
+match, or it has matched the minimal number of times but fails to
+consume any of the parsed text (this second condition prevents the
+subrule matching forever in some cases).
 
 Since a repeated subrule may match many instances of the subrule itself, the
 value associated with it is not a simple scalar, but rather a reference to a
@@ -640,7 +645,7 @@ B<Warning:> the parser relies on the information in the various C<this...>
 objects in some non-obvious ways. Tinkering with the other members of
 these objects will probably cause Bad Things to happen, unless you
 I<really> know what you're doing. The only exception to this advice is
-the the use of C<$this...->{local}> is always safe.
+that the use of C<$this...-E<gt>{local}> is always safe.
 
 
 =head2 Start-up Actions
@@ -682,9 +687,9 @@ variable are treated as a specification of an action which is to appended
 to each production in the corresponding grammar. So, for example, to construct
 a simple parse tree:
 
-$::RD_AUTOACTION = q { [@item] };
+    $::RD_AUTOACTION = q { [@item] };
 
-parser = new Parse::RecDescent (q{
+    parser = new Parse::RecDescent (q{
 	expression: and_expr '||' expression | and_expr
 	and_expr:   not_expr '&&' and_expr   | not_expr
 	not_expr:   '!' brack_expr           | brack_expr
@@ -694,7 +699,7 @@ parser = new Parse::RecDescent (q{
 
 which is equivalent to:
 
-parser = new Parse::RecDescent (q{
+    parser = new Parse::RecDescent (q{
 	expression: and_expr '&&' expression
 			{ [@item] }
 		  | and_expr
@@ -722,10 +727,10 @@ parser = new Parse::RecDescent (q{
 Alternatively, we could take an object-oriented approach, use different
 classes for each node (and also eliminating redundant intermediate nodes):
 
-$::RD_AUTOACTION = q
-  { $#item==1 ? $item[1] : new ${\"$item[0]_node"} (@item[1..$#item]) };
+    $::RD_AUTOACTION = q
+      { $#item==1 ? $item[1] : new ${\"$item[0]_node"} (@item[1..$#item]) };
 
-parser = new Parse::RecDescent (q{
+    parser = new Parse::RecDescent (q{
 	expression: and_expr '||' expression | and_expr
 	and_expr:   not_expr '&&' and_expr   | not_expr
 	not_expr:   '!' brack_expr           | brack_expr
@@ -735,7 +740,7 @@ parser = new Parse::RecDescent (q{
 
 which is equivalent to:
 
-parser = new Parse::RecDescent (q{
+    parser = new Parse::RecDescent (q{
 	expression: and_expr '&&' expression
 			{ new expression_node (@item[1..3]) }
 		  | and_expr
@@ -759,10 +764,10 @@ parser = new Parse::RecDescent (q{
 Note that, if a production already ends in an action, no autoaction is appended
 to it. For example, in this version:
 
-$::RD_AUTOACTION = q
-  { $#item==1 ? $item[1] : new ${\"$item[0]_node"} (@item[1..$#item]) };
+    $::RD_AUTOACTION = q
+      { $#item==1 ? $item[1] : new ${\"$item[0]_node"} (@item[1..$#item]) };
 
-parser = new Parse::RecDescent (q{
+    parser = new Parse::RecDescent (q{
 	expression: and_expr '&&' expression | and_expr
 	and_expr:   not_expr '&&' and_expr   | not_expr
 	not_expr:   '!' brack_expr           | brack_expr
@@ -976,7 +981,9 @@ useful side-effects. A level 1 warning is issued in all such cases.
 
 Note that productions beginning with conditional
 C<E<lt>reject:...E<gt>> directives are I<never> "optimized away" in
-this manner.
+this manner, even if they are always guaranteed to fail (for example:
+C<E<lt>reject:1E<gt>>)
+
 
 
 =item Resynchronization
@@ -1254,13 +1261,13 @@ preserve values between match attempts, values can be stored within the
 
 
 When matching a rule, each C<E<lt>rulevarE<gt>> directive is matched as
-if it were an unconditional C<E<lt>reject<gt>> directive (that is, it
+if it were an unconditional C<E<lt>rejectE<gt>> directive (that is, it
 causes any production in which it appears to immediately fail to match).
 For this reason (and to improve readability) it is usual to specify any
 C<E<lt>rulevarE<gt>> directive in a separate production at the start of
 the rule (this has the added advantage that it enables
 C<Parse::RecDescent> to optimize away such productions, just as it does
-for the C<E<lt>reject<gt>> directive).
+for the C<E<lt>rejectE<gt>> directive).
 
 
 =item Dynamically matched rules
@@ -1591,65 +1598,71 @@ be far more efficient:
 The following is a specification of grammar format accepted by
 C<Parse::RecDescent::new> (specified in the C<Parse::RecDescent> grammar format!):
 
-grammar    : components(s)
+ grammar    : components(s)
 
-component  : rule | comment
+ component  : rule | comment
 
-rule       : "\n" identifier ":" production(s?)
+ rule       : "\n" identifier ":" production(s?)
 
-production : items(s) 
+ production : items(s) 
 
-item       : lookahead(?) simpleitem
-	   | directive
-	   | comment
+ item       : lookahead(?) simpleitem
+	    | directive
+	    | comment
 
-lookahead  : '...' | '...!'		      # +'ve or -'ve lookahead
+ lookahead  : '...' | '...!'		       # +'ve or -'ve lookahead
+ 
+ simpleitem : subrule args(?)		       # match another rule
+	    | repetition		       # match repeated subrules
+	    | terminal			       # match the next input
+	    | bracket args(?)		       # match alternative items
+	    | action			       # do something
 
-simpleitem : subrule			      # match another rule
-	   | repetition			      # match repeated subrules
-	   | terminal			      # match the next input
-	   | bracket			      # match alternative items
-	   | action			      # do something
+ subrule    : identifier		       # the name of the rule
 
-subrule    : identifier			      # the name of the rule
+ args	    : {extract_codeblock($text,'[]')}  # just like a [...] array ref
 
-repetition : subrule howoften
+ repetition : subrule args(?) howoften
 
-howoften   : '(?)'			      # 0 or 1 times
-	   | '(s?)'			      # 0 or more times
-	   | '(s)'			      # 1 or more times
-	   | /(\d+)[.][.](/\d+)/	      # $1 to $2 times
-	   | /[.][.](/\d*)/		      # at most $1 times
-	   | /(\d*)[.][.])/		      # at least $1 times
+ howoften   : '(?)'			       # 0 or 1 times
+	    | '(s?)'			       # 0 or more times
+	    | '(s)'			       # 1 or more times
+	    | /(\d+)[.][.](/\d+)/	       # $1 to $2 times
+	    | /[.][.](/\d*)/		       # at most $1 times
+	    | /(\d*)[.][.])/		       # at least $1 times
 
-terminal   : /[/]([\][/]|[^/])*[/]/	      # interpolated pattern
-	   | /"([\]"|[^"])*"/		      # interpolated literal
-	   | /'([\]'|[^'])*'/		      # uninterpolated literal
+ terminal   : /[/]([\][/]|[^/])*[/]/	       # interpolated pattern
+	    | /"([\]"|[^"])*"/		       # interpolated literal
+	    | /'([\]'|[^'])*'/		       # uninterpolated literal
 
-action     : { extract_codeblock($text) }     # embedded Perl code
+ action     : { extract_codeblock($text) }     # embedded Perl code
 
-bracket    : '(' item(s) production(s?) ')'   # alternative subrules
+ bracket    : '(' Item(s) production(s?) ')'   # alternative subrules
 
-directive  : '<commit>'			      # commit to production
-	   | '<uncommit>'		      # cancel commitment
-	   | '<resync>'			      # skip to newline
-	   | '<resync:' pattern '>'	      # skip <pattern>
-	   | '<reject>'			      # fail this production
-	   | '<reject:' condition '>'	      # fail if <condition>
-	   | '<error>'			      # report an error
-	   | '<error:' msg '>'                # report error as "<msg>"
-	   | '<error?>'			      # error only if committed
-	   | '<error?:' msg '>'               #   "    "    "    "
+ directive  : '<commit>'		       # commit to production
+	    | '<uncommit>'		       # cancel commitment
+	    | '<resync>'		       # skip to newline
+	    | '<resync:' pattern '>'	       # skip <pattern>
+	    | '<reject>'		       # fail this production
+	    | '<reject:' condition '>'	       # fail if <condition>
+	    | '<error>'			       # report an error
+	    | '<error:' string '>'             # report error as "<string>"
+	    | '<error?>'		       # error only if committed
+	    | '<error?:' string '>'            #   "    "    "    "
+	    | '<rulevar:' /[^>]+/ '>'          # define rule-local variable
+	    | '<matchrule:' string '>' 	       # invoke rule named in string
 
-identifier : /[a-z]\w*/i		      # must start with alpha
+ identifier : /[a-z]\w*/i		       # must start with alpha
 
-comment    : /#[^\n]*/                        # same as Perl
+ comment    : /#[^\n]*/                        # same as Perl
 
-pattern    : {extract_bracketed($text,'<')}   # allow embedded "<..>"
+ pattern    : {extract_bracketed($text,'<')}   # allow embedded "<..>"
 
-condition  : {extract_codeblock($text,'{<')}  # full Perl expression
+ condition  : {extract_codeblock($text,'{<')}  # full Perl expression
 
-msg        : {extract_bracketed($text'<')}    # allow embedded "<..>"
+ string     : {extract_variable($text)}        # any Perl variable
+	    | {extract_quotelike($text)}       #   or quotelike string
+            | {extract_bracketed($text,'<')}   #   or balanced brackets
 
 
 =head1 DIAGNOSTICS
@@ -1711,7 +1724,7 @@ L<"ON-GOING ISSUES AND FUTURE DIRECTIONS"> below).
 
 =item *
 
-Productions which start with a C<E<lt>rejectW<gt>> or C<E<lt>rulevar:...<gt>>
+Productions which start with a C<E<lt>rejectE<gt>> or C<E<lt>rulevar:...E<gt>>
 directive. Such productions are optimized away (a level 1 warning).
 
 =item *
@@ -1743,7 +1756,7 @@ this should be trivial (ahem!) to implement.
 
 The parser generator can get confused if actions aren't properly
 closed or if they contain particularly nasty Perl syntax errors
-(particularly unmatched curly brackets).
+(especially unmatched curly brackets).
 
 =item *
 
