@@ -1,0 +1,146 @@
+Revision history for Perl extension Parse::RecDescent.
+
+1.00  Mon Aug 11 13:17:13 1997
+
+	- original version
+
+
+1.01  Mon Sep  8 18:04:14 EST 1997
+
+	- changed "quotemeta" to "quotemeta $_" in Text::Balanced
+	  to workaround bug in Perl 5.002 and 5.003
+
+
+1.10  Tue Sep 30 14:51:49 EST 1997
+
+	- fixed fatal bug in tracing code
+
+	- added m<delim>...<delim> format for regex tokens
+
+	- added support for trailing modifiers (/.../gimsox) in regex tokens
+
+	- added $thisline variable
+
+
+1.20  Thu Oct  2 11:46:57 EST 1997
+
+	- fixed handling of trailing regex modifiers (now no whitespace allowed
+	  before between last delimiter and first modifier)
+
+	- added trace diagnostic for failure/success of actions
+	  (demystifies failures caused by an action returning undef)
+
+	- added context for "Matched rule..." trace
+
+        - added a test so that an integer value (N>1) in the
+          $::RD_TRACE variable now truncates (to N characters) all
+          contexts reported in any trace
+
+	- added "start-up" actions: actions appearing before the first rule
+          were previously an error. They are now executed (once) at
+          the start of the parser's namespace.
+
+
+1.21  Sat Oct  4 17:12:23 EST 1997
+
+	- modified truncation of context in trace diagnostics (successful
+	  matches now report first N/2 and last N/2 chars, instead of first N)
+
+	- fixed incorrect version number in Balanced.pm
+
+
+1.22  Tue Oct  7 11:53:27 EST 1997
+
+	- fixed lurking trace problem with certain pathological regexes
+
+	- fixed bug in generation of special namespaces (this was serious
+	  as it prevented the use of more than one alternation in a parser,
+	  as well as preventing the use of more than one parser in a script!
+
+
+1.23  Fri Oct 17 10:15:22 EST 1997
+
+	- fixed error message generation for <error?:msg> directives
+
+	- fixed error message handling of empty productions
+
+	- fixed handling of multi-line start-up actions
+
+	- removed spurious debugging message for implicit subrule generation
+
+	- changed naming scheme for alternations (pseudo-rule's name now
+	  describes location of alternation exactly)
+
+	- added support for repetition specifiers on alternations.
+
+	- Text::Balanced::extract_.... altered to honour the context in
+	  which they are called (see Balanced.pod for details).
+
+
+1.24
+	- fixed minor problem in tracing code (context string now correctly
+	  reported for actions)
+
+	- added explicit namespace declaration at beginning of generated
+	  code, to ensure that any "start code" is declared in the
+	  appropriate namespace.
+
+	- fixed left recursion check on empty productions
+
+	- added $::RD_AUTOSTUB flag and associated autostubbing behaviour
+	  (see new section - "Autostubbing" - in RecDescent.pod)
+
+	- eliminated hierarchical precedence between $::RD_HINT and 
+          $::RD_TRACE. Enabling tracing now does _not_ automatically
+          turn on hinting (although error and warning messages are
+          still automatically enabled).
+
+	- fixed bug in Text::Balanced. Division now correctly handled
+	  in code blocks.
+
+
+1.25  Mon Feb 09 12:19:14 EST 1998
+
+	- Resynchronized numbering schemes for RecDescent and Balanced.
+
+
+1.26 Wed Feb 25 13:52:15 EST 1998
+
+	- Fixed bug (and inefficiency) in <resync:pattern> directive.
+
+	- Improved checking of regexes within grammars 
+
+	- Added subrule arguments (major change to internal grammar parser)
+
+	- Added <matchrule:...> directive
+
+	- started work on Compile() option (not complete yet - do not use!)
+
+	- Made generated code "use strict"
+
+	- Fixed bug which incorrectly warned against items
+	  following a <error?> directive.
+
+	- Improved $thisline (added assignment and resync)
+
+	- Fixed expectation messages for subrules
+
+	- Rearranged tar file to co-operate with CPAN.pm
+
+
+1.30	Fri May 22 05:52:06 1998
+
+	- Added <rulevar> directive
+
+	- Added culling of productions starting with <reject> or <rulevar>
+
+	- Cleaned up and improved format (and speed) of tracing code
+
+	- Added warning levels
+
+	- Optimized generation of token separator checking code.
+
+	- Fixed bug encountered when parsing a literal string
+
+	- Added $::RD_AUTOACTION to simplify standard actions at the
+	  end of each production

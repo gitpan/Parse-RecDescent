@@ -1,0 +1,1708 @@
+=head1 NAME
+
+Parse::RecDescent - Generate Recursive-Descent Parsers
+
+=head1 VERSION
+
+This document describes version 1.30 of Parse::RecDescent,
+released May 22, 1998.
+
+=head1 SYNOPSIS
+
+ use Parse::RecDescent;
+
+ # Generate a parser from the specification in $grammar:
+
+	 $parser = new Parse::RecDescent ($grammar);
+
+ # Generate a parser from the specification in $othergrammar
+
+	 $anotherparser = new Parse::RecDescent ($othergrammar);
+
+
+ # Parse $text using rule 'startrule' (which must be
+ # defined in $grammar):
+
+	$parser->startrule($text);
+
+
+ # Parse $text using rule 'otherrule' (which must also
+ # be defined in $grammar):
+
+	 $parser->otherrule($text);
+
+
+ # Change the universal token separator (prefix) pattern
+ # (the default is: '\s*'):
+
+	$Parse::RecDescent::tokensep = '[ \t]+';
+
+
+ # Replace productions of existing rules (or create new ones)
+ # with the productions defined in $newgrammar:
+
+	$parser->Replace($newgrammar);
+
+
+ # Extend existing rules (or create new ones)
+ # by adding extra productions defined in $moregrammar:
+
+	$parser->Extend($moregrammar);
+
+
+ # Global flags (useful as command line arguments under -s):
+
+	$::RD_ERRORS	   # unless undefined, report fatal errors
+	$::RD_WARN	   # if defined, also report non-fatal problems
+	$::RD_HINT	   # if defined, also suggestion remedies
+	$::RD_TRACE	   # if defined, also trace parsers' behaviour
+	$::RD_AUTOSTUB	   # if defined, generates "stubs" for undefined rules
+	$::RD_AUTOACTION   # if defined, appends specified action to productions
+
+
+=head1 DESCRIPTION
+
+=head2 Overview
+
+Parse::RecDescent incrementally generates top-down recursive-descent text
+parsers from simple yacc-like grammar specifications. It provides:
+
+=over 4
+
+=item *
+
+Regular expressions or literal strings as terminals (tokens),
+
+=item *
+
+Multiple (non-contiguous) productions for any rule,
+
+=item *
+
+Repeated and optional subrules within productions,
+
+=item *
+
+Full access to Perl within actions specified as part of the grammar,
+
+=item *
+
+Simple automated error reporting during parser generation and parsing,
+
+=item *
+
+The ability to commit to, uncommit to, or reject particular
+productions during a parse,
+
+=item *
+
+The ability to pass data up and down the parse tree ("down" via subrule
+argument lists, "up" via subrule return values)
+
+=item *
+
+Incremental extension of the parsing grammar (even during a parse),
+
+=back
+
+=head2 Using C<Parse::RecDescent>
+
+Parser objects are created by calling C<Parse::RecDescent::new>, passing in a
+grammar specification (see the following subsections). If the grammar is
+correct, C<new> returns a blessed reference which can then be used to initiate
+parsing through any rule specified in the original grammar. A typical sequence
+looks like this:
+
+	$grammar = q {
+			# GRAMMAR SPECIFICATION HERE
+		     };
+
+	$parser = new Parse::RecDescent ($grammar) or die "Bad grammar!\n";
+
+	# acquire $text
+
+	defined $parser->startrule($text) or print "Bad text!\n";
+
+
+If the rule through which parsing is initiated succeeds, its value (see below)
+is returned. Failure to generate the original parser or failure to match a test
+is indicated by returning C<undef>.
+
+
+=head2 Rules
+
+In the grammar from which the parser is built, rules are specified by
+giving an identifier (which must satisfy /[A-Za-z]w*/), followed by a
+colon, followed by one or more productions, separated by single
+vertical bars. Rules are entirely free-format:
+
+	rule1:	production1
+	     |  production2 |
+		production3 | production4
+
+	rule2
+		: production1
+		| production2
+
+At any point in the grammar previously defined rules may be extended with
+additional productions. This is achieved by redeclaring the rule with the new
+productions. Thus:
+
+	rule1: a | b | c
+	rule2: d | e | f
+	rule1: g | h
+
+is exactly equivalent to:
+
+	rule1: a | b | c | g | h
+	rule2: d | e | f
+
+Each production in a rule consists of zero or more items, each of which 
+may be either: the name of another rule to be matched (a "subrule"),
+a pattern or string literal to be matched directly (a "token"), a
+block of Perl code to be executed (an "action"), a special instruction
+to the parser (a "directive"), or a standard Perl comment (which is
+ignored).
+
+A rule matches a text if one of its productions matches. A production
+matches if each of its items match consecutive substrings of the
+text. The productions of a rule being matched are tried in the same
+order that they appear in the original grammar, and the first matching
+production terminates the match attempt (successfully). If all
+productions are tried and none matches, the match attempt fails.
+
+Each successfully matched item in a production is assigned a value,
+which can be accessed in subsequent actions within the same
+production (or, in some cases, as the return value of a successful
+subrule call). Unsuccessful items don't have an associated value,
+since the failure of an item causes the entire surrounding production
+to immediately fail. The following sections describe the various types
+of items and their success values.
+
+
+=head2 Subrules
+
+A subrule which appears in a production is an instruction to the parser to
+attempt to match the named rule at that point in the text being
+parsed. If the named subrule is not defined when requested the
+production containing it immediately fails (unless it was "autostubbed" - see
+L<Autostubbing>).
+
+A rule may (recursively) call itself as a subrule, but I<not> as the
+left-most item in any of its productions (since such recursions are usually
+non-terminating).
+
+The value associated with a subrule is the value associated with its
+C<$return> variable (see L<"Actions"> below), or with the last successfully
+matched item in the subrule match.
+
+Subrules may also be specified with a trailing repetition specifier,
+indicating that they are to be (greedily) matched the specified number
+of times. The available specifiers are:
+
+		subrule(?)	# Match one-or-zero times
+		subrule(s)	# Match one-or-more times
+		subrule(s?)	# Match zero-or-more times
+		subrule(N)	# Match exactly N times for integer N > 0
+		subrule(N..M)	# Match between N and M times
+		subrule(..M)	# Match between 1 and M times
+		subrule(N..)	# Match at least N times
+
+Since a repeated subrule may match many instances of the subrule itself, the
+value associated with it is not a simple scalar, but rather a reference to a
+list of scalars, each of which is the value associated with one of the
+individual subrule matches. In other words in the rule:
+
+		program: statement(s)
+
+the value associated with the repeated subrule "statement(s)" is a reference
+to an array containing the values matched by each call to the individual
+subrule "statement".
+
+
+=head2 Tokens
+
+If a quote-delimited string or a Perl regex appears in a production,
+the parser attempts to match that string or pattern at that point in
+the text. For example:
+
+		typedef: "typedef" typename identifier ';'
+
+		identifier: /[A-Za-z_][A-Za-z0-9_]*/
+
+As in regular Perl, a single quoted string is uninterpolated, whilst
+a double-quoted string or a pattern is interpolated (at the time
+of matching, I<not> when the parser is constructed). Hence, it is
+possible to define rules in which tokens can be set at run-time:
+
+		typedef: "$::typedefkeyword" typename identifier ';'
+
+		identifier: /$::identpat/
+
+Note that, since each rule is implemented inside a special namespace
+belonging to its parser, it is necessary to explicitly quantify
+variables from the main package.
+
+Regex tokens can be specified using just backslashes as delimiters
+or with the explicit C<mE<lt>delimiterE<gt>......E<lt>delimiterE<gt>> syntax:
+
+		typedef: "typedef" typename identifier ';'
+
+		identifier: m{[A-Za-z_][A-Za-z0-9_]*}
+
+A regex of either type can also have any valid trailing parameter(s)
+(that is, any of [gimsox]):
+
+		typedef: "typedef" typename identifier ';'
+
+		identifier: / [a-z_] 		# LEADING ALPHA OR UNDERSCORE
+			      [a-z0-9_]*	# THEN DIGITS ALSO ALLOWED
+			    /ix			# CASE/SPACE/COMMENT INSENSITIVE
+
+The value associated with any successfully matched token is a string
+containing the actual text which was matched by the token.
+
+It is important to remember that, since each grammar is specified in a
+Perl string, all instances of the universal escape character '\' within
+a grammar must be "doubled", so that they interpolate to single '\'s when
+the string is compiled. For example, to use the grammar:
+
+		word:	    /\S+/ | backslash
+		line:	    prefix word(s) "\n"
+		backslash:  '\\'
+
+the following code is required:
+
+		$parser = new Parse::RecDescent (q{
+
+			word:	    /\\S+/ | backslash
+			line:	    prefix word(s) "\\n"
+			backslash:  '\\\\'
+
+		});
+
+
+=head2 Token Separators
+
+For the purpose of matching, each token in a production is considered
+to be preceded by a "token separator" - a pattern which must be
+matched before a token match is attempted. By default, the token
+separator is optional whitespace (which always matches, at least
+trivially), but this default may be reset at several different
+levels.
+
+The variable C<$Parse::RecDescent::tokensep> stores the universal
+token separator, which is the default for all token matches in all parsers
+built with C<Parse::RecDescent>.
+
+The token separator for an individual parser (for example, C<$psr>) can be reset by
+changing C<$psr-E<gt>{"tokensep"}> (or
+C<$thisparser-E<gt>{"tokensep"}> within a grammar action - see
+L<"Actions> below).
+
+Likewise the token separators for individual rules or even individual
+productions can be changed by altering the corresponding
+C<{"tokensep"}> member of the appropriate sub-object (see the
+description of C<$thisrule> and C<$thisprod> in the next section.)
+
+To remove a redefinition of the token separator for a particular,
+simply assign it an undefined value. Its value will then revert to
+the that of the next higher level (for example, undefining a
+production's token separator causes it to default to the enclosing
+rule's separator which may in turn default to the parser's, etc.).
+If the universal token separator
+C<Parse::RecDescent::tokensep> is undefined, its default value
+reverts to the original default of optional whitespace.
+
+The full set of rules for determining which of several possible
+token separators is selected at any point is:
+
+=over 4
+
+=item 1.
+
+If the local variable C<$tokensep> is set, use that.
+
+=item 2.
+
+Otherwise, if the current production's token separator
+(that is, C<$thisprod-E<gt>{"tokensep"}>) is set, use that.
+
+=item 3.
+
+Otherwise, if the current rule's token separator
+(that is, C<$thisrule-E<gt>{"tokensep"}>) is set, use that.
+
+=item 4.
+
+Otherwise, if the current parsers's token separator
+(that is, C<$thisparser-E<gt>{"tokensep"}>) is set, use that.
+
+=item 5.
+
+Otherwise, if the global token separator 
+(that is, C<$Parse::RecDescent::tokensep>) is set, use that.
+
+=item 6.
+
+Otherwise, use the default token separator (that is, optional whitespace).
+
+=back
+
+Note that (to reduce overheads) changes in the token separator are only
+checked for at the start of a production or after an action.
+Furthermore, if the string "tokensep" does not appear anywhere in the
+complete grammar, then changes in the token separator are only checked
+for at the start of each rule.
+
+
+=head2 Actions
+
+An action is a block of Perl code which is to be executed (as the
+block of a C<do> statement) when the parser reaches that point in a
+production. The action executes within a special namespace belonging to
+the active parser, so care must be taken in correctly qualifying variable
+names (see also L<Start-up Actions> below).
+
+The action is considered to succeed if the final value of the block
+is defined (that is, if the implied C<do> statement evaluates to a
+defined value - I<even one which would be treated as "false">). Note
+that the value associated with a successful action is also the final
+value in the block.
+
+Within an action, a number of useful parse-time variables are
+available in the special parser namespace (there are other variables
+also accessible, but meddling with them will probably just break your
+parser. As a general rule, if you avoid referring to unquantified
+variables - especially those starting with an underscore - inside an action,
+things should be okay):
+
+=over 4
+
+=item C<@item>
+
+The array slice C<@item[1..$#item]> stores the value associated with each item
+(that is, each subrule, token, or action) in the current production. The
+analogy is to C<$1>, C<$2>, etc. in a I<yacc> grammar.
+Note that, for obvious reasons, C<@item> only contains the
+values of items I<before> the current point in the production.
+
+The first element (C<$item[0]>) stores the name of the current rule
+being matched.
+
+C<@item> is a standard Perl array, so it can also be indexed with negative
+numbers, representing the number of items I<back> from the current position in
+the parse:
+
+		stuff: /various/ bits 'and' pieces "then" data 'end'
+				{ print @item[-2] }  # PRINTS data
+						     # (EASIER THAN: @item[6])
+
+
+=item C<@arg> and C<%arg>
+
+The array C<@arg> and the hash C<%arg> store any arguments passed to
+the rule from some other rule (see L<"Subrule argument lists>). Changes
+to the elements of either variable do not propagate back to the calling
+rule (data can be passed back from a subrule via the C<$return>
+variable - see next item).
+
+
+=item C<$return>
+
+If a value is assigned to C<$return> within an action, that value is
+returned if the production containing the action eventually matches
+successfully. Note that setting C<$return> I<doesn't> cause the current
+production to succeed. It merely tells it what to return if it I<does> succeed.
+Hence C<$return> is analogous to C<$$> in a I<yacc> grammar.
+
+If C<$return> is not assigned within a production, the value of the
+last component of the production (namely: C<$item[$#item]>) is
+returned if the production succeeds.
+
+
+=item C<$commit>
+
+The current state of commitment to the current production (see L<"Directives">
+below).
+
+=item C<$text>
+
+The remaining (unparsed) text. Changes to C<$text> I<do not
+propagate> out of unsuccessful productions, but I<do> survive
+successful productions. Hence it is possible to dynamically alter the
+text being parsed - for example, to provide a C<#include>-like facility:
+
+	hash_include: '#include' filename
+				{ $text = ::loadfile($item[2]) . $text }
+
+	filename: '<' /[a-z0-9._-]+/i '>'  { $return = $item[2] }
+		| '"' /[a-z0-9._-]+/i '"'  { $return = $item[2] }
+
+
+=item C<$thisline>
+
+The current line number within the current parse (starting from 1). For
+efficiency, C<$thisline> is actually a tied hash, and only recomputes the
+current line number when the variable's value is used.
+
+Assignment to C<$thisline> adjusts the line number calculator, so that
+it believes that the current line number is the value being assigned. Note
+that this adjustment will be reflected in all subsequent line numbers
+calculations.
+
+Modifying the value of the variable C<$text> (as in the previous
+C<hash_include> example, for instance) will confuse the line
+counting mechanism. To prevent this, you should call
+C<Parse::RecDescent::LineCounter::resync($thisline)> I<immediately>
+after any assignment to the variable C<$text> (or, at least, before the
+next attempt to use C<$thisline>).
+
+Note that if a production fails after assigning to or
+resync'ing C<$thisline>, the parser's line counter mechanism will
+usually be corrupted.
+
+
+=item C<$thisparser>
+
+A reference to the S<C<Parse::RecDescent>> object through which
+parsing was initiated. Almost never used except to reset the default
+token separator for the entire parser. For example:
+
+		no_tabs: { $thisparser->{tokensep} = '[ \n]*' }
+			 rules
+			 { $thisparser->{tokensep} = undef }>>
+
+The value of C<$thisparser> propagates down the subrules of a parse
+but not back up. Hence, you can invoke subrules from another parser
+for the scope of the current rule as follows:
+
+		rule: subrule1 subrule2
+		    | { $thisparser = $::otherparser } <reject>
+		    | subrule3 subrule4
+		    | subrule5
+
+The result is that the production calls "subrule1" and "subrule2" of
+the current parser, and the remaining productions call the named subrules
+from C<$::otherparser>. Note, however that "Bad Things" will happen if
+C<::otherparser> isn't a blessed reference and/or doesn't have methods
+with the same names as the required subrules!
+
+=item C<$thisrule>
+
+A reference to the S<C<Parse::RecDescent::Rule>> object corresponding to the 
+rule currently being matched. Generally only used to (permanently)
+change the token separator for a rule. For example:
+
+		commasep: { $thisrule->{tokensep} = '\s*,\s*' } <reject>
+			| cmdcode /[A-Za-z]{20}/ /\d{5,10}/
+			| cmdcode /\d{10}/ /\d{5,10}/
+
+Note that a rule's token separator is only used before the explicit
+terminals in the rule (such as C<\d{10}> in the above example).
+Subrules (like "cmdcode") use their I<own> token separators.
+
+=item C<$thisprod>
+
+A reference to the S<C<Parse::RecDescent::Production>> object
+corresponding to the production currently being matched. Again, not
+generally used, except to change the token separator
+C<$thisprod-E<gt>{tokensep}> for a single production.
+
+=back
+	
+B<Warning:> the parser relies on the information in the various C<this...>
+objects in some non-obvious ways. Tinkering with the other members of
+these objects will probably cause Bad Things to happen, unless you
+I<really> know what you're doing. The only exception to this advice is
+the the use of C<$this...->{local}> is always safe.
+
+
+=head2 Start-up Actions
+
+Any actions which appear I<before> the first rule definition in a
+grammar are treated as "start-up" actions. Each such action is
+stripped of its outermost blackets and than evaluated (in the parser's
+special namespace) just before the rules of the grammar are first
+compiled.
+
+The main use of start-up actions is to declare local variables within the
+parser's special namespace:
+
+		{ my $lastitem = '???'; }
+
+		list: item(s)	{ $return = $lastitem }
+
+		item: book	{ $lastitem = 'book'; }
+		      bell	{ $lastitem = 'bell'; }
+		      candle	{ $lastitem = 'candle'; }
+
+but start-up actions can be used to execute I<any> valid Perl code
+within a parser's special namespace.
+
+Start-up actions can appear within a grammar extension or replacement
+(that is, a partial grammar installed via C<Parse::RecDescent::Extend()> or 
+C<Parse::RecDescent::Replace()> - see L<Incremental Parsing>), and will be
+executed before the new grammar is installed. Note, however, that a 
+particular start-up action is only ever executed once.
+
+
+=head2 Autoactions
+
+It is sometimes desirable to be able to specify a default action to be
+taken at the end of every production (for example, in order to easily
+build a parse tree). If the variable C<$::RD_AUTOACTION> is defined
+when C<Parse::RecDescent::new()> is called, the contents of that
+variable are treated as a specification of an action which is to appended
+to each production in the corresponding grammar. So, for example, to construct
+a simple parse tree:
+
+	$::RD_AUTOACTION = q { [@item] };
+
+	parser = new Parse::RecDescent (q{
+		expression: and_expr '||' expression | and_expr
+		and_expr:   not_expr '&&' and_expr   | not_expr
+		not_expr:   '!' brack_expr           | brack_expr
+		brack_expr: '(' expression ')'       | identifier
+		identifier: /[a-z]+/i
+		});
+
+which is equivalent to:
+
+	parser = new Parse::RecDescent (q{
+		expression: and_expr '&&' expression
+				{ [@item] }
+			  | and_expr
+				{ [@item] }
+
+		and_expr:   not_expr '&&' and_expr  
+				{ [@item] }
+			|   not_expr
+				{ [@item] }
+
+		not_expr:   '!' brack_expr          
+				{ [@item] }
+			|   brack_expr
+				{ [@item] }
+
+		brack_expr: '(' expression ')'      
+				{ [@item] }
+			  | identifier
+				{ [@item] }
+
+		identifier: /[a-z]+/i
+				{ [@item] }
+		});
+
+Alternatively, we could take an object-oriented approach, use different
+classes for each node (and also eliminating redundant intermediate nodes):
+
+	$::RD_AUTOACTION = q
+	  { $#item==1 ? $item[1] : new ${\"$item[0]_node"} (@item[1..$#item]) };
+
+	parser = new Parse::RecDescent (q{
+		expression: and_expr '||' expression | and_expr
+		and_expr:   not_expr '&&' and_expr   | not_expr
+		not_expr:   '!' brack_expr           | brack_expr
+		brack_expr: '(' expression ')'       | identifier
+		identifier: /[a-z]+/i
+		});
+
+which is equivalent to:
+
+	parser = new Parse::RecDescent (q{
+		expression: and_expr '&&' expression
+				{ new expression_node (@item[1..3]) }
+			  | and_expr
+
+		and_expr:   not_expr '&&' and_expr  
+				{ new and_expr_node (@item[1..3]) }
+			|   not_expr
+
+		not_expr:   '!' brack_expr          
+				{ new not_expr_node (@item[1..2]) }
+			|   brack_expr
+
+		brack_expr: '(' expression ')'      
+				{ new brack_expr_node (@item[1..3]) }
+			  | identifier
+
+		identifier: /[a-z]+/i
+				{ new identifer_node (@item[1]) }
+		});
+
+Note that, if a production already ends in an action, no autoaction is appended
+to it. For example, in this version:
+
+	$::RD_AUTOACTION = q
+	  { $#item==1 ? $item[1] : new ${\"$item[0]_node"} (@item[1..$#item]) };
+
+	parser = new Parse::RecDescent (q{
+		expression: and_expr '&&' expression | and_expr
+		and_expr:   not_expr '&&' and_expr   | not_expr
+		not_expr:   '!' brack_expr           | brack_expr
+		brack_expr: '(' expression ')'       | identifier
+		identifier: /[a-z]+/i
+				{ new terminal_node($item[1]) }
+		});
+
+each C<identifier> match produces a C<terminal_node> object, I<not> an
+C<identifier_node> object.
+
+A level 1 warning is issued each time an "autoaction" is added to
+some production.
+
+
+=head2 Autostubbing
+
+Normally, if a subrule appears in some production, but no rule of that
+name is ever defined in the grammar, the production which refers to the
+non-existent subrule fails immediately. This typically occurs as a
+result of misspellings, and is a sufficiently common occurance that a
+warning is generated for such situations.
+
+However, when prototyping a grammar it is sometimes useful to be
+able to use subrules before a proper specification of them is 
+really possible.  For example, a grammar might include a section like:
+
+		function_call: identifier '(' arg(s?) ')'
+
+		identifier: /[a-z]\w*/i
+
+where the possible format of an argument is sufficiently complex that
+it is not worth specifying in full until the general function call
+syntax has been debugged. In this situation it is convenient to leave
+the real rule C<arg> undefined and just slip in a placeholder (or
+"stub"):
+
+		arg: 'arg'
+
+so that the function call syntax can be tested with dummy input such as:
+
+		f0()
+		f1(arg)
+		f2(arg arg)
+		f3(arg arg arg)
+
+et cetera.
+
+Early in prototyping, many such "stubs" may be required, so 
+C<Parse::RecDescent> provides a means of automating their definition.
+If the variable C<$::RD_AUTOSTUB> is defined when a parser is built,
+a subrule reference to any non-existent rule (say, C<sr>),
+causes a "stub" rule of the form:
+
+		sr: 'sr'
+
+to be automatically defined in the generated parser.
+A level 1 warning is issued for each such "autostubbed" rule.
+
+Hence, with C<$::AUTOSTUB> defined, it is possible to only partially
+specify a grammar, and then "fake" matches of the unspecified
+(sub)rules by just typing in their name.
+
+
+
+=head2 Look-ahead
+
+If a subrule, token, or action is prefixed by "...", then it is
+treated as a "look-ahead" request. That means that the current production can
+(as usual) only succeed if the specified item is matched, but that the matching
+I<does not consume any of the text being parsed>. This is very similar to the
+C</(?=...)/> look-ahead construct in Perl patterns. Thus, the rule:
+
+		inner_word: word ...word
+
+will match whatever the subrule "word" matches, provided that match is followed
+by some more text which subrule "word" would also match (although this
+second substring is not actually consumed by "inner_word")
+
+Likewise, a "...!" prefix, causes the following item to succeed (without
+consuming any text) if and only if it would normally fail. Hence, a
+rule such as:
+
+		identifier: ...!keyword ...!'_' /[A-Za-z_]\w*/
+
+matches a string of characters which satisfies the pattern
+C</[A-Za-z_]\w*/>, but only if the same sequence of characters would
+not match either subrule "keyword" or the literal token '_'.
+
+Sequences of look-ahead prefixes accumulate, multiplying their positive and/or
+negative senses. Hence:
+
+		inner_word: word ...!......!word
+
+is exactly equivalent the the original example above (a warning is issued in
+cases like these, since they often indicate something left out, or
+misunderstood).
+
+Note that actions can also be treated as look-aheads. In such cases,
+the state of the parser text (in the local variable C<$text>)
+I<after> the look-ahead action is guaranteed to be identical to its
+state I<before> the action, regardless of how it's changed I<within>
+the action (unless you actually undefine C<$text>, in which case you
+get the disaster you deserve :-).
+
+
+=head2 Directives
+
+Directives are special pre-defined actions which may be used to alter
+the behaviour of the parser. There are seven directives:
+C<E<lt>commitE<gt>>, C<E<lt>uncommitE<gt>>, C<E<lt>rejectE<gt>>,
+C<E<lt>resyncE<gt>>, C<E<lt>errorE<gt>>, C<E<lt>rulevarE<gt>>,
+and C<E<lt>matchruleE<gt>>.
+
+=over 4
+
+=item Committing and uncommitting
+
+The C<E<lt>commitE<gt>> and C<E<lt>uncommitE<gt>> directives permit the recursive
+descent of the parse tree to be pruned (or "cut") for efficiency.
+Within a rule, a C<E<lt>commitE<gt>> directive instructs the rule to ignore subsequent
+productions if the current production fails. For example:
+
+		command: 'find' <commit> filename
+		       | 'open' <commit> filename
+		       | 'move' filename filename
+
+Clearly, if the leading token 'find' is matched in the first production but that
+production fails for some other reason, then the remaining
+productions cannot possibly match. The presence of the
+C<E<lt>commitE<gt>> causes the "command" rule to fail immediately if
+an invalid "find" command is found, and likewise if an invalid "open"
+command is encountered.
+
+It is also possible to revoke a previous commitment. For example:
+
+		if_statement: 'if' <commit> condition
+					'then' block <uncommit>
+					'else' block
+			    | 'if' <commit> condition
+					'then' block
+
+In this case, a failure to find an "else" block in the first
+production shouldn't preclude trying the second production, but a
+failure to find a "condition" certainly should.
+
+As a special case, any production in which the I<first> item is an
+C<E<lt>uncommitE<gt>> immediately revokes a preceding C<E<lt>commitE<gt>>
+(even though the production would not otherwise have been tried). For
+example, in the rule:
+
+		request: 'explain' expression
+		       | 'explain' <commit> keyword
+		       | 'save'
+		       | 'quit'
+		       | <uncommit> term '?'
+
+if the text being matched was "explain?", and the first two
+productions failed, then the C<E<lt>commitE<gt>> in production two would cause
+productions three and four to be skipped, but the leading
+C<E<lt>uncommitE<gt>> in the production five would allow that production to
+attempt a match.
+
+Note in the preceding example, that the C<E<lt>commitE<gt>> was only placed
+in production two. If production one had been:
+
+		request: 'explain' <commit> expression 
+
+then production two would be (inappropriately) skipped if a leading
+"explain..." was encountered.
+
+Both C<E<lt>commitE<gt>> and C<E<lt>uncommitE<gt>> directives always succeed, and their value
+is always 1.
+
+
+=item Rejecting a production
+
+The C<E<lt>rejectE<gt>> directive immediately causes the current production
+to fail (it is exactly equivalent to, but more obvious than, the
+action C<{undef}>). A C<E<lt>rejectE<gt>> is useful when it is desirable to get
+the side effects of the actions in one production, without prejudicing a match
+by some other production later in the rule. For example, to insert
+tracing code into the parse:
+
+		complex_rule: { print "In complex rule...\n"; } <reject>
+			    
+		complex_rule: simple_rule '+' 'i' '*' simple_rule
+			    | 'i' '*' simple_rule
+			    | simple_rule
+
+
+It is also possible to specify a conditional rejection, using the
+form C<E<lt>reject:I<condition>E<gt>>, which only rejects if the
+specified condition is true. This form of rejection is exactly
+equivalent to the action C<{(I<condition>)?undef:1}E<gt>>.
+For example:
+
+		command: save_command
+		       | restore_command
+		       | <reject: defined $::tolerant> { exit }
+		       | <error: Unknown command. Ignored.>
+
+A C<E<lt>rejectE<gt>> directive never succeeds (and hence has no
+associated value). A conditional rejection may succeed (if its
+condition is not satisfied), in which case its value is 1.
+
+As an extra optimization, C<Parse::RecDescent> ignores any production
+which I<begins> with an unconditional C<E<lt>rejectE<gt>> directive,
+since any such production can never successfully match or have any
+useful side-effects. A level 1 warning is issued in all such cases.
+
+Note that productions beginning with conditional
+C<E<lt>reject:...E<gt>> directives are I<never> "optimized away" in
+this manner.
+
+
+=item Resynchronization
+
+The C<E<lt>resyncE<gt>> directive provides a visually distinctive
+means of consuming some of the text being parsed, usually to skip an
+erroneous input. In its simplest form C<E<lt>resyncE<gt>> simply
+consumes text up to and including the next newline (C<"\n">)
+character, succeeding only if the newline is found, in which case it
+causes its surrounding rule to return zero on success.
+
+In other words, a C<E<lt>resyncE<gt>> is exactly equivalent to the token
+C</[^\n]*\n/> followed by the action S<C<{ $return = 0 }>> (except that
+productions beginning with a C<E<lt>resyncE<gt>> are ignored when generating
+error messages). A typical use might be:
+
+		script : command(s)
+
+		command: save_command
+		       | restore_command
+		       | <error: Unknown command. Ignored.>
+		       | <resync> # TRY NEXT LINE, IF POSSIBLE
+
+It is also possible to explicitly specify a resynchronization
+pattern, using the C<E<lt>resync:I<pattern>E<gt>> variant. This version
+succeeds only if the specified pattern matches (and consumes) the
+parsed text. In other words, C<E<lt>resync:I<pattern>E<gt>> is exactly
+equivalent to the token C</I<pattern>/> (followed by a S<C<{ $return = 0 }>>
+action). For example, if commands were terminated by newlines or semi-colons:
+
+		command: save_command
+		       | restore_command
+		       | <error: Unknown command. Ignored.>
+		       | <resync:[^;\n]*[;\n]>
+
+The value of a successfully matched C<E<lt>resyncE<gt>> directive (of either
+type) is the text that it consumed. Note, however, that since the
+directive also sets C<$return>, a production consisting of a lone
+C<E<lt>resyncE<gt>> succeeds but returns the value zero (which a calling rule
+may find useful to distinguish between "true" matches and "tolerant" matches).
+Remember that returning a zero value indicates that the rule I<succeeded> (since
+only an C<undef> denotes failure within C<Parse::RecDescent> parsers.
+
+
+=item Error handling
+
+The C<E<lt>errorE<gt>> directive provides automatic or user-defined
+generation of error messages during a parse. In its simplest form
+C<E<lt>errorE<gt>> unconditionally generates an error message based on
+the mismatch between the last item expected and the text which cause
+it to fail. For example, given the rule:
+
+		McCoy: curse ',' name ', I'm a doctor, not a' a_profession '!'
+		     | possessive 'dead,' name '!'
+		     | <error>
+
+the following strings would produce the following messages:
+
+=over 4
+
+=item "Amen, Jim!"
+
+	       ERROR (line 1): Invalid McCoy: Expected curse or possessive
+			       not found
+
+=item "Dammit, Jim, I'm a doctor!"
+
+	       ERROR (line 1): Invalid McCoy: Expected ", I'm a doctor, not a"
+			       but found ", I'm a doctor!" instead
+
+=item "He's dead,\n"
+
+	       ERROR (line 2): Invalid McCoy: Expected name not found
+
+=item "He's alive!"
+
+	       ERROR (line 1): Invalid McCoy: Expected 'dead,' but found
+			       "alive!" instead
+
+=item "Dammit, Jim, I'm a doctor, not a pointy-eared Vulcan!"
+
+	       ERROR (line 1): Invalid McCoy: Expected a profession but found
+			       "pointy-eared Vulcan!" instead
+
+
+=back
+
+Note that, when autogenerating error messages, all underscores in any
+rule name used in a message are replaced by single spaces (for example
+"a_production" becomes "a production"). Judicious choice of rule
+names can therefore considerably improve the readability of automatic
+error messages (as well as the maintainability of the original
+grammar).
+
+If the automatically generated error is not sufficient, it is possible to
+provide an explicit message as part of the error directive. For example:
+
+		Spock: "Fascinating ',' (name | 'Captain') '.'
+		     | "Highly illogical, doctor."
+		     | <error: He never said that!>
+
+which would result in all failures to parse a "Spock" subrule printing the
+following message:
+
+	       ERROR (line <N>): Invalid Spock:  He never said that!
+
+The error message is treated as a "qq{...}" string and interpolated
+when the error is generated (I<not> when the directive is specified!).
+Hence:
+
+		<error: Mystical error near "$text">
+
+would correctly insert the ambient text string which caused the error.
+
+There are two other forms of error directive: C<E<lt>error?E<gt>> and
+S<C<E<lt>error?: msgE<gt>>>. These behave just like C<E<lt>errorE<gt>>
+and S<C<E<lt>error: msgE<gt>>> respectively, except that they are
+only triggered if the rule is "committed" at the time they are
+encountered. For example:
+
+		Scotty: "Ya kenna change the Laws of Phusics," <commit> name
+		      | name <commit> ',' 'she's goanta blaw!'
+		      | <error?>
+
+will only generate an error for a string beginning with "Ya kenna
+change the Laws o' Phusics," or a valid name, but which still fails to match the
+corresponding production. That is, C<$parser-E<gt>Scotty("Aye, Cap'ain")> will
+fail silently (since neither production will "commit "the rule on that
+input), whereas S<C<$parser-E<gt>Scotty("Mr Spock, ah jest kenna do'ut!")E<gt>>>
+will fail with the error message:
+
+	       ERROR (line 1): Invalid Scotty: expected 'she's goanta blaw!'
+			       but found 'I jest kenna do'ut!' instead.
+
+since in that case the second production would commit after matching
+the leading name.
+
+Note that to allow this behaviour, all C<E<lt>errorE<gt>> directives which are
+the first item in a production automatically uncommit the rule just
+long enough to allow their production to be attempted (that is, when
+their production fails, the commitment is reinstated so that
+subsequent productions are skipped).
+
+In order to I<permanently> uncommit the rule before an error message,
+it is necessary to put an explicit C<E<lt>uncommitE<gt>> before the
+C<E<lt>errorE<gt>>. For example:
+
+		line: 'Kirk:'  <commit> Kirk
+		    | 'Spock:' <commit> Spock
+		    | 'McCoy:' <commit> McCoy
+                    | <uncommit> <error?> <reject>
+		    | <resync>
+
+There is one situation in which the output of the various types of
+error directive is suppressed; namely, when the rule containing them
+is being parsed as part of a "look-ahead" (see L<"Look-ahead">). In this
+case, the error directive will still cause the rule to fail, but will do
+so silently.
+
+An unconditional C<E<lt>errorE<gt>> directive always fails (and hence has no
+associated value). This means that encountering such a directive
+always causes the production containing it to fail. Hence an
+C<E<lt>errorE<gt>> directive will inevitably be the last (useful) item of a
+rule (a level 3 warning is issued if a production contains items after an unconditional
+C<E<lt>errorE<gt>> directive).
+
+An C<E<lt>error?E<gt>> directive will I<succeed> (that is: fail to fail :-), if
+the current rule is uncommitted when the directive is encountered. In
+that case the directive's associated value is zero. Hence, this type
+of error directive I<can> usefully be used before the end of a
+production. For example:
+
+		command: 'do' <commit> something
+		       | 'report' <commit> something
+		       | <error?: Syntax error> <error: Unknown command>
+
+
+B<Warning:> The C<E<lt>error?E<gt>> directive does I<not> mean "always fail (but
+do so silently unless committed)". It actually means "only fail (and report) if
+committed, otherwise I<succeed>". To achieve the "fail silently if uncommitted"
+semantics, it is necessary to use:
+
+		rule: item <commit> item(s)
+		    | <error?> <reject>	     # FAIL SILENTLY UNLESS COMMITTED
+
+
+The level of reporting during both parser construction and parsing is
+controlled by the presence or absence of four global variables:
+C<$::RD_ERRORS>, C<$::RD_WARN>, C<$::RD_HINT>, and
+<$::RD_TRACE>. If C<$::RD_ERRORS> is defined (and by default, it is)
+then fatal errors are reported.
+
+Defining any of the remaining variables (which are not defined by
+default) cumulatively increases the amount of information reported.
+Defining C<$::RD_WARN> causes non-fatal errors to also be reported,
+whilst defining C<$::RD_HINT> causes the parser generator to offer
+more detailed analyses and hints on both errors and warnings.
+
+Warnings have an associated "level": 1, 2, or 3. The higher the level,
+the more serious the warning. The value of the corresponding global
+variable (C<$::RD_WARN>) determines the I<lowest> level of warning to
+be displayed. Hence, to see I<all> warnings, set C<$::RD_WARN> to 1.
+To see only the most serious warnings set C<$::RD_WARN> to 3.
+Note that setting C<$::RD_HINT> implicitly sets C<$::RD_WARN> to 1.
+
+Defining C<$::RD_TRACE> causes the parser generator and the parser to
+report their progress to STDERR in excruciating detail (although, without hints
+unless $::RD_HINT is separately defined). This detail
+can be moderated in only one respect: if C<$::RD_TRACE> has an
+integer value (I<N>) greater than 1, only the I<N> characters of
+the "current parsing context" (that is, where in the input string we
+are at any point in the parse) is reported at any time.
+
+C<$::RD_TRACE> is mainly useful for debugging a grammar that isn't
+behaving as you expected it to. To this end, if C<$::RD_TRACE> is
+defined when a parser is built, any actual parser code which is
+generated is also written to a file named "RD_TRACE" in the local
+directory.
+
+Note that the four variables belong to the "main" package, which
+makes them easier to refer to in the code controlling the parser, and
+also makes it easy to turn them into command line flags ("-RD_ERRORS",
+"-RD_WARN", "-RD_HINT", "-RD_TRACE") under B<perl -s>.
+
+=item Specifying local variables
+
+It is occasionally convenient to specify variables which are local
+to a single rule. This may be achieved by including a
+C<E<lt>rulevar:...E<gt>> directive anywhere in the rule. For example:
+
+		markup: <rulevar: $tag>
+
+		markup: tag {($tag=$item[1]) =~ s/^<|>$//g} body[$tag]
+
+The example C<E<lt>rulevar: $tagE<gt>> directive causes a "my" variable named
+C<$tag> to be declared at the start of the subroutine implementing the
+C<markup> rule (that is, I<before> the first production, regardless of
+where in the rule it is specified).
+
+Specifically, any directive of the form:
+C<E<lt>rulevar:I<text>E<gt>> causes a line of the form C<my I<text>;>
+to be added at the beginning of the rule subroutine, immediately after
+the definitions of the following local variables:
+
+		$thisparser	$commit
+		$thisrule	@item
+		$thisline	@arg
+		$text		%arg
+
+This means that the following C<E<lt>rulevarE<gt>> directives work
+as expected:
+
+		<rulevar: $count = 0 >
+
+		<rulevar: $firstarg = $arg[0] || '' >
+
+		<rulevar: $myItems = \@item >
+
+		<rulevar: @context = ( $thisline, $text, @arg ) >
+
+		<rulevar: ($name,$age) = $arg{"name","age"} >
+
+
+Note however that, because all such variables are "my" variables, their
+values I<do not persist> between match attempts on a given rule. To
+preserve values between match attempts, values can be stored within the
+"local" member of the C<$thisrule> object:
+
+		countedrule: { $thisrule->{"local"}{"count"}++ }
+			     <reject>
+			   | subrule1
+			   | subrule2
+			   | <reject: $thisrule->{"local"}{"count"} == 1>
+			     subrule3
+
+
+When matching a rule, each C<E<lt>rulevarE<gt>> directive is matched as
+if it were an unconditional C<E<lt>reject<gt>> directive (that is, it
+causes any production in which it appears to immediately fail to match).
+For this reason (and to improve readability) it is usual to specify any
+C<E<lt>rulevarE<gt>> directive in a separate production at the start of
+the rule (this has the added advantage that it enables
+C<Parse::RecDescent> to optimize away such productions, just as it does
+for the C<E<lt>reject<gt>> directive).
+
+
+=item Dynamically matched rules
+
+Because regexes and double-quoted strings are interpolated, it is relatively
+easy to specify productions with "context sensitive" tokens. For example:
+
+		command:  keyword  body  "end $item[1]"
+
+which ensures that a command block is bounded by a
+"I<E<lt>keywordE<gt>>...end I<E<lt>same keywordE<gt>>" pair.
+
+Building productions in which subrules are context sensitive is also possible,
+via the C<E<lt>matchrule:...E<gt>> directive. This directive behaves
+identically to a subrule item, except that the rule which is invoked to match
+it is determined by the string specified after the colon. For example, we could
+rewrite the C<command> rule like this:
+
+		command:  keyword  <matchrule:body>  "end $item[1]"
+
+Whatever appears after the colon in the directive is treated as an interpolated
+string (that is, as if it appeared in C<qq{...}> operator) and the value of
+that interpolated string is the name of the subrule to be matched.
+
+Of course, just putting a constant string like C<body> in a
+C<E<lt>matchrule:...E<gt>> directive is of little interest or benefit.
+The power of directive is seen when we use a string that interpolates
+to something interesting. For example:
+
+		command:	keyword <matchrule:$item[1]_body> "end $item[1]"
+
+		keyword:	'while' | 'if' | 'function'
+
+		while_body:	condition block
+
+		if_body:	condition block ('else' block)(?)
+
+		function_body:	arglist block
+
+Now the C<command> rule selects how to proceed on the basis of the keyword
+that is found. It is as if C<command> were declared:
+
+		command:	'while'    while_body    "end while" 
+		       |	'if'       if_body       "end if" 
+		       |	'function' function_body "end function" 
+
+
+When a C<E<lt>matchrule:...E<gt>> directive is used as a repeated
+subrule, the rule name expression is "late-bound". That is, the name of
+the rule to be called is re-evaluated I<each time> a match attempt is
+made. Hence, the following grammar:
+
+		{ $::species = 'dogs' }
+
+		pair: 	'two' <matchrule:$::species>(s)
+
+		dogs:	/dogs/ { $::species = 'cats' }
+
+		cats:	/cats/
+
+will match the string "two dogs cats cats" completely, whereas it will
+only match the string "two dogs dogs dogs" up to the eighth letter. If
+the rule name were "early bound" (that is, evaluated only the first
+time the directive is encountered in a production), the reverse
+behaviour would be expected.
+
+=back
+
+
+=head2 Subrule argument lists
+
+It is occasionally useful to pass data to a subrule which is being invoked. For
+example, consider thes following grammar fragment:
+
+		classdecl: keyword decl
+
+		keyword:   'struct' | 'class';
+
+		decl:	   # WHATEVER
+
+The C<decl> rule might wish to know which of the two keywords was used
+(since it may affect some aspect of the way the subsequent declaration
+is interpreted). C<Parse::RecDescent> allows the grammar designer to
+pass data into a rule, by placing that data in an I<argument list>
+(that is, in square brackets) immediately after any subrule item in a
+production. Hence, we could pass the keyword to C<decl> as follows:
+
+		classdecl: keyword decl[ $item[1] ]
+
+		keyword:   'struct' | 'class';
+
+		decl:	   # WHATEVER
+
+The argument list can consist of any number (including zero!) of comma-separated
+Perl expressions. In other words, it looks exactly like a Perl anonymous
+array reference. For example, we could pass the keyword, the name of the
+surrounding rule, and the literal 'keyword' to C<decl> like so:
+
+		classdecl: keyword decl[$item[1],$item[0],'keyword']
+
+		keyword:   'struct' | 'class';
+
+		decl:	   # WHATEVER
+
+Within the rule to which the data is passed (C<decl> in the above examples)
+that data is available as the elements of a local variable C<@arg>. Hence
+C<decl> might report its intentions as follows:
+
+		classdecl: keyword decl[$item[1],$item[0],'keyword']
+
+		keyword:   'struct' | 'class';
+
+		decl:	   { print "Declaring $arg[0] (a $arg[2])\n";
+			     print "(this rule called by $arg[1])" }
+
+Subrule argument lists can also be interpreted as hashes, simply by using
+the local variable C<%arg> instead of C<@arg>. Hence we could rewrite the
+previous example:
+
+		classdecl: keyword decl[keyword => $item[1],
+					caller  => $item[0],
+					type    => 'keyword']
+
+		keyword:   'struct' | 'class';
+
+		decl:	   { print "Declaring $arg{keyword} (a $arg{type})\n";
+			     print "(this rule called by $arg{caller})" }
+
+Both C<@arg> and C<%arg> are always available, so the grammar designer may
+choose whichever convention (or combination of conventions) suits best.
+
+Subrule argument lists are also useful for creating "rule templates"
+(especially when used in conjunction with the C<E<lt>matchrule:...E<gt>>
+directive). For example, the subrule:
+
+		list: 	  <matchrule:$arg{rule}> /$arg{sep}/ list[@arg]
+				{ $return = [ $item[1], @{$item[3]} ] }
+		    | 	  <matchrule:$arg{rule}>
+				{ $return = [ $item[1]] }
+
+is a handy template for the common problem of matching a separated list.
+For example:
+
+		function: 'func' name '(' list[rule=>'param',sep=>';'] ')'
+
+		param:	  list[rule=>'name',sep=>','] ':' typename
+
+		name:	  /\w+/
+
+		typename: name
+
+
+When a subrule argument list is used with a repeated subrule, the argument list
+goes I<before> the repetition specifier:
+
+		list:	/some|many/ thing[ $item[1] ](s)
+
+The argument list is "late bound". That is, it is re-evaluated for every
+repetition of the repeated subrule.
+This means that each repeated attempt to match the subrule may be
+passed a completely different set of arguments if the value of the
+expression in the argument list changes between attempts. So, for
+example, the grammar:
+
+		{ $::species = 'dogs' }
+
+		pair: 	'two' animal[$::species](s)
+
+		animal:	/$arg[0]/ { $::species = 'cats' }
+
+will match the string "two dogs cats cats" completely, whereas
+it will only match the string "two dogs dogs dogs" up to the
+eighth letter. If the value of the argument list were "early bound"
+(that is, evaluated only the first time a repeated subrule match is
+attempted), one would expect the matching behaviours to be reversed.
+
+Of course, it is possible to effectively "early bind" such argument lists
+by passing them a value which does not change on each repetition. For example:
+
+		{ $::species = 'dogs' }
+
+		pair: 	'two' { $::species } animal[$item[2]](s)
+
+		animal:	/$arg[0]/ { $::species = 'cats' }
+
+
+=head2 Alternations
+
+Alternations are implicit (unnamed) rules defined as part of a production. An
+alternation is defined as a series of '|'-separated productions inside a
+pair of round brackets. For example:
+
+		character: 'the' ( good | bad | ugly ) /dude/
+
+Every alternation implicitly defines a new subrule, whose
+automatically-generated name indicates its origin:
+"_alternation_<I>_of_production_<P>_of_rule<R>" for the appropriate
+values of <I>, <P>, and <R>. A call to this implicit subrule is then
+inserted in place of the brackets. Hence the above example is merely a
+convenient short-hand for:
+
+		character: 'the'
+			   _alternation_1_of_production_1_of_rule_character
+			   /dude/
+
+		_alternation_1_of_production_1_of_rule_character:
+			   good | bad | ugly
+
+Since alternations are parsed by recursively calling the parser generator, 
+any type(s) of item can appear in an alternation. For example:
+
+		character: 'the' ( 'high' "plains"	# Silent, with poncho
+				 | /no[- ]name/ 	# Silent, no poncho
+				 | vengeance_seeking	# Poncho-optional
+				 | <error>		
+				 ) drifter
+
+In this case, if an error occurred, the automatically generated
+message would be:
+
+		ERROR (line <N>): Invalid implicit subrule: Expected
+		                  'high' or /no[- ]name/ or generic,
+				  but found "pacifist" instead
+
+Since every alternation actually has a name, it's even possible
+to extend or replace them:
+
+		parser->Replace(
+			"_alternation_1_of_production_1_of_rule_character:
+				'generic Eastwood'"
+				);
+
+More importantly, since alternations are a form of subrule, they can be given
+repetition specifiers:
+
+		character: 'the' ( good | bad | ugly )(?) /dude/
+
+
+=head2 Incremental Parsing
+
+C<Parse::RecDescent> provides two methods - C<Extend> and C<Replace> - which
+can be used to alter the grammar matched by a parser. Both methods
+take the same argument as C<Parse::RecDescent::new>, namely a
+grammar specification string
+
+C<Parse::RecDescent::Extend> interprets the grammar specification and adds any
+productions it finds to the end of the rules for which they are specified. For
+example:
+
+		$add = "name: 'Jimmy-Bob' | 'Bobby-Jim'\ndesc: colour /necks?/";
+		parser->Extend($add);
+
+adds two productions to the rule "name" (creating it if necessary) and one
+production to the rule "desc".
+
+C<Parse::RecDescent::Replace> is identical, except that it first resets are
+rule specified in the additional grammar, removing any existing productions.
+Hence after:
+
+		$add = "name: 'Jimmy-Bob' | 'Bobby-Jim'\ndesc: colour /necks?/";
+		parser->Replace($add);
+
+are are only I<only> valid "name"s and the one possible description.
+
+A more interesting use of the C<Extend> and C<Replace> methods is to call them
+inside the action of an executing parser. For example:
+
+		typedef: 'typedef' type_name identifier ';'
+			       { $thisparser->Extend("type_name: '$item[3]'") }
+		       | <error>
+
+		identifier: ...!type_name /[A-Za-z_]w*/
+
+which automatically prevents type names from being typedef'd, or:
+
+		command: 'map' key_name 'to' abort_key
+			       { $thisparser->Replace("abort_key: '$item[2]'") }
+		       | 'map' key_name 'to' key_name
+			       { map_key($item[2],$item[4]) }
+		       | abort_key
+			       { exit if confirm("abort?") }
+
+		abort_key: 'q'
+
+		key_name: ...!abort_key /[A-Za-z]/
+
+which allows the user to change the abort key binding, but not to unbind it.
+
+The careful use of such constructs makes it possible to reconfigure a
+a running parser, eliminating the need for semantic feedback by
+providing syntactic feedback instead.
+
+
+=head2 A Metagrammar for C<Parse::RecDescent>
+
+The following is a specification of grammar format accepted by
+C<Parse::RecDescent::new> (specified in the C<Parse::RecDescent> grammar format!):
+
+	grammar    : components(s)
+
+	component  : rule | comment
+
+	rule       : "\n" identifier ":" production(s?)
+	
+	production : items(s) 
+
+	item       : lookahead(?) simpleitem
+		   | directive
+		   | comment
+
+	lookahead  : '...' | '...!'		      # +'ve or -'ve lookahead
+
+	simpleitem : subrule			      # match another rule
+	           | repetition			      # match repeated subrules
+		   | terminal			      # match the next input
+		   | bracket			      # match alternative items
+		   | action			      # do something
+
+	subrule    : identifier			      # the name of the rule
+
+	repetition : subrule howoften
+
+	howoften   : '(?)'			      # 0 or 1 times
+		   | '(s?)'			      # 0 or more times
+		   | '(s)'			      # 1 or more times
+		   | /(\d+)[.][.](/\d+)/	      # $1 to $2 times
+		   | /[.][.](/\d*)/		      # at most $1 times
+		   | /(\d*)[.][.])/		      # at least $1 times
+
+	terminal   : /[/]([\][/]|[^/])*[/]/	      # interpolated pattern
+		   | /"([\]"|[^"])*"/		      # interpolated literal
+		   | /'([\]'|[^'])*'/		      # uninterpolated literal
+
+	action     : { extract_codeblock($text) }     # embedded Perl code
+
+	bracket    : '(' item(s) production(s?) ')'   # alternative subrules
+
+	directive  : '<commit>'			      # commit to production
+		   | '<uncommit>'		      # cancel commitment
+		   | '<resync>'			      # skip to newline
+		   | '<resync:' pattern '>'	      # skip <pattern>
+		   | '<reject>'			      # fail this production
+		   | '<reject:' condition '>'	      # fail if <condition>
+		   | '<error>'			      # report an error
+		   | '<error:' msg '>'                # report error as "<msg>"
+		   | '<error?>'			      # error only if committed
+		   | '<error?:' msg '>'               #   "    "    "    "
+
+	identifier : /[a-z]\w*/i		      # must start with alpha
+
+	comment    : /#[^\n]*/                        # same as Perl
+
+	pattern    : {extract_bracketed($text,'<')}   # allow embedded "<..>"
+
+	condition  : {extract_codeblock($text,'{<')}  # full Perl expression
+
+	msg        : {extract_bracketed($text'<')}    # allow embedded "<..>"
+
+
+=head1 DIAGNOSTICS
+
+Diagnostics are intended to be self-explanatory (particularly if you
+use B<-RD_HINT> (under B<perl -s>) or define C<$::RD_HINT> inside the program).
+C<Parse::RecDescent> currently diagnoses the following:
+
+=over 4
+
+=item *
+
+Invalid regular expressions used as pattern terminals (fatal error).
+
+=item *
+
+Invalid Perl code in code blocks (fatal error).
+
+=item *
+
+Lookahead used in the wrong place or in a nonsensical way (fatal error).
+
+=item *
+
+"Obvious" cases of left-recursion (fatal error).
+
+=item *
+
+Unrecognisable components in the grammar specification (fatal error).
+
+=item *
+
+"Orphaned" rule components specified before the first rule (fatal error)
+or after an C<E<lt>errorE<gt>> directive (level 3 warning).
+
+=item *
+
+Missing rule definitions (this only generates a level 3 warning, since you
+may be providing them later via C<Parse::RecDescent::Extend()>).
+
+=item *
+
+Attempts to define rules named 'Replace' or 'Extend', which cannot be
+called directly through the parser object because of the predefined
+meaning of C<Parse::RecDescent::Replace> and
+C<Parse::RecDescent::Extend>. (Only a level 2 warning is generated, since
+such rules I<can> still be used as subrules).
+
+=item *
+
+Multiple consecutive lookahead specifiers (a level 1 warning only, since their
+effects simply accumulate).
+
+=item *
+
+Instances where greedy repetition behaviour will almost certainly
+cause the failure of a production (a level 3 warning - see
+L<"ON-GOING ISSUES AND FUTURE DIRECTIONS"> below).
+
+=item *
+
+Productions which start with a C<E<lt>rejectW<gt>> or C<E<lt>rulevar:...<gt>>
+directive. Such productions are optimized away (a level 1 warning).
+
+=item *
+
+Rules which are autogenerated under C<$::AUTOSTUB> (a level 1 warning).
+
+=back
+
+=head1 AUTHOR
+
+Damian Conway (damian@cs.monash.edu.au)
+
+=head1 BUGS AND IRRITATIONS
+
+There are undoubtedly serious bugs lurking somewhere in this much code :-)
+Bug reports and other feedback are most welcome.
+
+Ongoing annoyances include:
+
+=over 4
+
+=item *
+
+There's no support for parsing directly from an input stream.
+If and when the Perl Gods give us regular expressions on streams,
+this should be trivial (ahem!) to implement.
+
+=item *
+
+The parser generator can get confused if actions aren't properly
+closed or if they contain particularly nasty Perl syntax errors
+(particularly unmatched curly brackets).
+
+=item *
+
+The generator only detects the most obvious form of left recursion
+(potential recursion on the first subrule in a rule). More subtle
+forms of left recursion (for example, through the second item in a 
+rule after a "zero" match of a preceding "zero-or-more" repetition,
+or after a match of a subrule with an empty production) are not found.
+
+=item *
+
+Instead of complaining about left-recursion, the generator should
+silently transform the grammar to remove it. Don't expect this
+feature any time soon as it would require a more sophisticated
+approach to parser generation than is currently used.
+
+=item *
+
+The generated parsers don't always run as fast as might be wished.
+
+=item *
+
+The meta-parser should be bootstrapped using C<Parse::RecDescent> :-)
+
+=back
+
+=head1 ON-GOING ISSUES AND FUTURE DIRECTIONS
+
+=over 4
+
+=item 1.
+
+Repetitions are "incorrigibly greedy" in that they will eat everything they can
+and won't backtrack if that behaviour causes a production to fail needlessly.
+So, for example:
+
+		rule: subrule(s) subrule
+
+will I<never> succeed, because the repetition will eat all the
+subrules it finds, leaving none to match the second item. Such
+constructions are relatively rare (and C<Parse::RecDescent::new> generates a
+warning whenever they occur) so this may not be a problem, especially
+since the insatiable behaviour can be overcome "manually" by writing:
+
+		rule: penultimate_subrule(s) subrule
+
+		penultimate_subrule: subrule ...subrule
+
+The issue is that this construction is exactly twice as expensive as the
+original, whereas backtracking would add only 1/I<N> to the cost (for
+matching I<N> repetitions of C<subrule>). I would welcome feedback on
+the need for backtracking; particularly on cases where the lack of it
+makes parsing performance problematical.
+
+=item 2.
+
+Having opened that can of worms, it's also necessary to consider whether there
+is a need for non-greedy repetition specifiers. Again, it's possible (at some
+cost) to manually provide the required functionality:
+
+		rule: nongreedy_subrule(s) othersubrule
+
+		nongreedy_subrule: subrule ...!othersubrule
+
+Overall, the issue is whether the benefit of this extra functionality
+outweighs the drawbacks of further complicating the (currently
+minimalist) grammar specification syntax, and (worse) introducing more overhead
+into the generated parsers.
+
+=item 3.
+
+An C<E<lt>autocommitE<gt>> directive would be nice. That is, it would be useful to be
+able to say:
+
+		command: <autocommit>
+		command: 'find' name
+		       | 'find' address
+		       | 'do' command 'at' time 'if' condition
+		       | 'do' command 'at' time
+		       | 'do' command
+		       | unusual_command
+
+and have the generator work out that this should be "pruned" thus:
+
+		command: 'find' name
+		       | 'find' <commit> address
+		       | 'do' <commit> command <uncommit>
+				'at' time
+				'if' <commit> condition
+		       | 'do' <commit> command <uncommit>
+				'at' <commit> time
+		       | 'do' <commit> command
+		       | unusual_command
+
+There are several issues here. Firstly, should the
+C<E<lt>autocommitE<gt>> automatically install an C<E<lt>uncommitE<gt>>
+at the start of the last production (on the grounds that the "command"
+rule doesn't know whether an "unusual_command" might start with "find"
+or "do") or should the "unusual_command" subgraph be analysed (to see
+if it I<might> be viable after a "find" or "do")?
+
+The second issue is how regular expressions should be treated. The simplest
+approach would be simply to uncommit before them (on the grounds that they
+I<might> match). Better efficiency would be obtained by analyzing all preceding
+literal tokens to determine whether the pattern would match them.
+
+Overall, the issues are: can such automated "pruning" approach a hand-tuned
+version sufficiently closely to warrant the extra set-up expense, and (more
+importantly) is the problem important enough to even warrant the non-trivial
+effort of building an automated solution?
+
+=back
+
+=head1 COPYRIGHT
+
+     Copyright (c) 1997-1998, Damian Conway. All Rights Reserved.
+     This module is free software. It may be used, redistributed
+     and/or modified under the terms of the Perl Artistic License
+          (see http://www.perl.com/perl/misc/Artistic.html)
