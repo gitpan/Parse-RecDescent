@@ -7,10 +7,10 @@ package Parse::RecDescent;
 
 use Text::Balanced qw ( extract_codeblock extract_bracketed extract_quotelike );
 
-use vars qw ( $tokensep );
+use vars qw ( $skip );
 
-   *deftokensep  = \ '\s*';	# DEFAULT SEPARATOR IS OPTIONAL WHITESPACE
-   $tokensep  = '\s*';		# UNIVERSAL SEPARATOR IS OPTIONAL WHITESPACE
+   *defskip  = \ '\s*';	# DEFAULT SEPARATOR IS OPTIONAL WHITESPACE
+   $skip  = '\s*';		# UNIVERSAL SEPARATOR IS OPTIONAL WHITESPACE
 my $MAXREP  = 100_000_000;	# REPETITIONS MATCH AT MOST 100,000,000 TIMES
 
 package Parse::RecDescent::LineCounter;
@@ -131,36 +131,11 @@ sub new ($$$$$)
 				"prods"    => [],
 				"calls"    => [],
 				"changed"  => 0,
-				"tokensep" => undef,
 				"line"     => $line,
 				"impcount" => 0,
 				"vars"	   => "",
 			}, $class;
 	}
-}
-
-sub dump {
-	my ($self, $handle, $space) = @_;
-
-#			"name"     => q{$self->{"name"}},
-#			"changed"  => $self->{"changed"},
-#			"line"     => $self->{"line"},
-#			"impcount" => $self->{"impcount"},
-
-	print $handle <<"_STUFF_";
-
-		bless( {
-			"tokensep" => @{[ defined $self->{"tokensep"} ? qq['$self->{"tokensep"}'] : 'undef' ]},
-			"description" => q[ @{[ $self->expected() ]} ],
-			"prods"    => [
-_STUFF_
-		my $prod;
-		foreach $prod (@{$self->{"prods"}}) {
-			$prod->dump($handle, $space);
-			print $handle ",\n";
-		}
-	
-		print $handle qq!\t\t\t\t]\n\t\t\t}, "${space}::SimpleLeaf")!;
 }
 
 sub reset($)
@@ -262,20 +237,6 @@ sub nextimplicit($)
 	return "_alternation_${impcount}_of_production_${prodcount}_of_rule_$self->{name}";
 }
 
-sub toksepcode($)
-{
-	my $code = q{ $_toksep = };
-
-	$code .= q{ defined $tokensep		     ? $tokensep
-		  : defined $thisprod->{"tokensep"}  ? $thisprod->{"tokensep"}
-		  : } if $_[0];
-		  
-	$code .= q{  defined $thisrule->{"tokensep"}  ? $thisrule->{"tokensep"}
-		  : defined $thisparser->{"tokensep"}? $thisparser->{"tokensep"}
-		  : defined $Parse::RecDescent::tokensep    ? $Parse::RecDescent::tokensep 
-						     : $Parse::RecDescent::deftokensep;
-		 }
-}
 
 sub code($$)
 {
@@ -285,16 +246,13 @@ eval 'undef &' . $namespace . '::' . $self->{"name"};
 
 	my $code =
 '
-# ARGS ARE: ($parser, $text; $repeating, $_noactions, \@args, $toksep)
+# ARGS ARE: ($parser, $text; $repeating, $_noactions, \@args)
 sub ' . $namespace . '::' . $self->{"name"} .  '
 {
-	my $_toksep = undef;
 	my $thisparser = $_[0];
 	$ERRORS = 0;
 	my $thisrule = $thisparser->{"rules"}{"' . $self->{"name"} . '"};
-	'
-	. ($parser->{_checktoksep} ? '' : toksepcode(0) ).
-	'
+	
 	Parse::RecDescent::_trace(q{Trying rule: [' . $self->{"name"} . ']},
 				  Parse::RecDescent::_tracefirst($_[1]),
 				  q{' . $self->{"name"} . '})
@@ -304,6 +262,8 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 		? 'my $def_at = @{$thisparser->{deferred}};'
 		: '') .
 	'
+	my $err_at = @{$thisparser->{errors}};
+
 	my $_tok;
 	my $return = undef;
 	my $_matched=0;
@@ -360,6 +320,7 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 					if defined $::RD_TRACE;
 		return undef;
 	}
+	splice @{$thisparser->{errors}}, $err_at;
 	$return = $item[$#item] unless defined $return;
 	if (defined $::RD_TRACE)
 	{
@@ -402,9 +363,9 @@ sub isleftrec($$)
 
 package Parse::RecDescent::Production;
 
-sub describe ($)
+sub describe ($;$)
 {
-	return join ' ', map { $_->describe or () } @{$_[0]->{items}};
+	return join ' ', map { $_->describe($_[1]) or () } @{$_[0]->{items}};
 }
 
 sub new ($$;$$)
@@ -417,36 +378,14 @@ sub new ($$;$$)
 		"items"    => [],
 		"uncommit" => $uncommit,
 		"error"    => $error,
-		"tokensep" => undef,
 		"line"     => $line,
 	}, $class;
-}
-
-sub dump {
-	my ($self, $handle, $space) = @_;
-
-	print $handle <<"_STUFF_";
-
-				bless( {
-					"error"    => @{[ defined $self->{"error"} ? qq['$self->{"error"}}'] : 'undef' ]},
-					"uncommit" => @{[ defined $self->{"tokensep"} ? 'q{$self->{"tokensep"}}' : 'undef' ]},
-					"tokensep" => @{[ defined $self->{"tokensep"} ? 'q{$self->{"tokensep"}}' : 'undef' ]},
-					"line"     => @{[ defined $self->{"line"} ? $self->{"line"} : 'undef' ]},
-					"items"    => [
-_STUFF_
-		my $item;
-		foreach $item (@{$self->{"items"}}) {
-			$item->dump($handle, $space);
-			print $handle ",\n";
-		}
-	
-		print $handle qq!\t\t\t\t]\n\t\t\t\t\t}, "${space}::Production")!;
 }
 
 sub expected ($)
 {
 	my $itemcount = scalar @{$_[0]->{"items"}};
-	return ($itemcount) ? $_[0]->{"items"}[0]->describe() : '';
+	return ($itemcount) ? $_[0]->{"items"}[0]->describe(1) : '';
 }
 
 sub hasleftmost ($$)
@@ -480,6 +419,19 @@ sub mustfail($)
 		       or a <rulevar> (which is equivalent to a <reject>). In either case
 		       the production can never successfully match.");
 		return 1;
+	}
+	return 0;
+}
+
+sub changesskip($)
+{
+	my $item;
+	foreach $item (@{$_[0]->{"items"}})
+	{
+		if (ref($item) =~ /Parse::RecDescent::(Action|Directive)/)
+		{
+			return 1 if $item->{code} =~ /\$skip/;
+		}
 	}
 	return 0;
 }
@@ -531,6 +483,10 @@ sub code($$$$)
 	. (defined $self->{"uncommit"} ? '' : ' && !$commit')
 	. ')
 	{
+		' .
+		($self->changesskip()
+			? 'local $skip = defined($skip) ? $skip : $Parse::RecDescent::skip;'
+			: '') .'
 		Parse::RecDescent::_trace(q{Trying production: ['
 					  . $self->describe . ']},
 					  Parse::RecDescent::_tracefirst($_[1]),
@@ -539,7 +495,6 @@ sub code($$$$)
 		my $thisprod = $thisrule->{"prods"}[' . $self->{"number"} . '];
 		' . (defined $self->{"error"} ? '' : '$text = $_[1];' ) . '
 		my $_savetext;
-		my $tokensep;
 		@item = ("' . $rule->{"name"} . '");
 ';
 	$code .= 
@@ -551,10 +506,6 @@ sub code($$$$)
 	for ($i = 0; $i < @{$self->{"items"}}; $i++)
 	{
 		$item = ${$self->{items}}[$i];
-		$code .= Parse::RecDescent::Rule::toksepcode(1)
-			if $parser->{_checktoksep} &&
-			   (!$i || $item->isterminal()
-				&& ${$self->{items}}[$i-1]->maychangetoksep());
 
 		$code .= preitempos() if $parser->{_checkitempos};
 
@@ -611,15 +562,8 @@ sub new ($$$$)
 	}, $class;
 }
 
-sub dump {
-	my ($self, $handle, $space) = @_;
-
-	print $handle qq!\t\t\t\t\tbless( {}, '${space}::SimpleLeaf') !;
-}
-
 sub issubrule { undef }
 sub isterminal { 0 }
-sub maychangetoksep { 1 }
 
 sub code($$$$)
 {
@@ -653,8 +597,7 @@ package Parse::RecDescent::Directive;
 
 sub issubrule { undef }
 sub isterminal { 0 }
-sub maychangetoksep { 0 }
-sub describe { $_[0]->{name} }
+sub describe { $_[1] ? '' : $_[0]->{name} } 
 
 sub new ($$$$$)
 {
@@ -666,11 +609,6 @@ sub new ($$$$$)
 		"line"      => $_[3],
 		"name"      => $_[4],
 	}, $class;
-}
-sub dump {
-    my ($self, $handle, $space) = @_;
-
-	print $handle qq!\t\t\t\t\tbless( {}, '${space}::SimpleLeaf') !;
 }
 
 sub code($$$$)
@@ -713,8 +651,7 @@ package Parse::RecDescent::UncondReject;
 
 sub issubrule { undef }
 sub isterminal { 0 }
-sub maychangetoksep { 0 }
-sub describe { $_[0]->{name} }
+sub describe { $_[1] ? '' : $_[0]->{name} }
 
 sub new ($$$;$)
 {
@@ -729,11 +666,6 @@ sub new ($$$;$)
 
 # MARK, YOU MAY WANT TO OPTIMIZE THIS.
 
-sub dump {
-    my ($self, $handle, $space) = @_;
-
-	print $handle qq!\t\t\t\t\tbless( {}, '${space}::SimpleLeaf') !;
-}
 
 sub code($$$$)
 {
@@ -760,8 +692,7 @@ package Parse::RecDescent::Error;
 
 sub issubrule { undef }
 sub isterminal { 0 }
-sub maychangetoksep { 0 }
-sub describe { '<error...>' }
+sub describe { $_[1] ? '' : '<error...>' }
 
 sub new ($$$$$)
 {
@@ -775,12 +706,6 @@ sub new ($$$$$)
 	}, $class;
 }
 
-sub dump {
-	my ($self, $handle, $space) = @_;
-
-	print $handle qq!\t\t\t\t\tbless( {}, '${space}::SimpleLeaf') !;
-}
-
 sub code($$$$)
 {
 	my ($self, $namespace, $rule) = @_;
@@ -789,8 +714,9 @@ sub code($$$$)
 	
 	if ($self->{"msg"})  # ERROR MESSAGE SUPPLIED
 	{
-		$action .= "Parse::RecDescent::_error(qq{$self->{msg}}" .
-			    ',$thisline);'; 
+		#WAS: $action .= "Parse::RecDescent::_error(qq{$self->{msg}}" .  ',$thisline);'; 
+		$action .= 'push @{$thisparser->{errors}}, [qq{'.$self->{msg}.'},$thisline];'; 
+
 	}
 	else	  # GENERATE ERROR MESSAGE DURING PARSE
 	{
@@ -798,9 +724,8 @@ sub code($$$$)
 		my $rule = $item[0];
 		   $rule =~ s/\Aimplicit_subrule_.\d*\Z/implicit subrule/;
 		   $rule =~ s/_/ /g;
-		Parse::RecDescent::_error("Invalid $rule: "
-					  . $expectation->message()
-			   		  ,$thisline);
+		#WAS: Parse::RecDescent::_error("Invalid $rule: " . $expectation->message() ,$thisline);
+		push @{$thisparser->{errors}}, ["Invalid $rule: " . $expectation->message() ,$thisline];
 		'; 
 	}
 
@@ -818,7 +743,6 @@ package Parse::RecDescent::Token;
 
 sub issubrule { undef }
 sub isterminal { 1 }
-sub maychangetoksep { 0 }
 sub describe ($) { shift->{'description'}}
 
 
@@ -867,12 +791,6 @@ sub new ($$$$$$)
 	}, $class;
 }
 
-sub dump {
-    my ($self, $handle, $space) = @_;
-
-	print $handle qq!\t\t\t\t\tbless( { 'description' => q{$self->{'description'}} }, '${space}::SimpleLeaf') !;
-}             
-
 
 sub code($$$$)
 {
@@ -885,7 +803,7 @@ sub code($$$$)
 	$sdel =~ s/[[{(<]/{}/;
 	
 my $code = '
-		Parse::RecDescent::_trace(q{Trying token: [' . $self->describe
+		Parse::RecDescent::_trace(q{Trying terminal: [' . $self->describe
 					  . ']}, Parse::RecDescent::_tracefirst($text),
 					  q{' . $rule->{name} . '})
 						if defined $::RD_TRACE;
@@ -895,20 +813,20 @@ my $code = '
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) . '
 
 		' . ($self->{"lookahead"}<0?'if':'unless')
-		. ' ($text =~ s/\A($_toksep)/$lastsep=$1 and ""/e and '
+		. ' ($text =~ s/\A($skip)/$lastsep=$1 and ""/e and '
 		. ($checkitempos? 'do {'.Parse::RecDescent::Production::incitempos().' 1} and ' : '')
 		. '  $text =~ s' . $ldel . '\A(?:' . $self->{"pattern"} . ')'
 				 . $rdel . $sdel . $mod . ')
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
-			Parse::RecDescent::_trace(q{<<Didn\'t match token>>},
+			Parse::RecDescent::_trace(q{<<Didn\'t match terminal>>},
 						  Parse::RecDescent::_tracefirst($text))
 					if defined $::RD_TRACE;
 
 			last;
 		}
-		Parse::RecDescent::_trace(q{>>Matched token<< (return value: [}
+		Parse::RecDescent::_trace(q{>>Matched terminal<< (return value: [}
 						. $& . q{])},
 						  Parse::RecDescent::_tracefirst($text))
 					if defined $::RD_TRACE;
@@ -925,7 +843,6 @@ package Parse::RecDescent::Literal;
 
 sub issubrule { undef }
 sub isterminal { 1 }
-sub maychangetoksep { 0 }
 sub describe ($) { shift->{'description'} }
 
 sub new ($$$$)
@@ -948,18 +865,13 @@ sub new ($$$$)
 	}, $class;
 }
 
-sub dump {
-    my ($self, $handle, $space) = @_;
-
-	print $handle qq!\t\t\t\t\tbless( { 'description' => q{$self->{'description'}} }, '${space}::SimpleLeaf') !;
-}             
 
 sub code($$$$)
 {
 	my ($self, $namespace, $rule, $checkitempos) = @_;
 	
 my $code = '
-		Parse::RecDescent::_trace(q{Trying token: [' . $self->describe
+		Parse::RecDescent::_trace(q{Trying terminal: [' . $self->describe
 					  . ']},
 					  Parse::RecDescent::_tracefirst($text),
 					  q{' . $rule->{name} . '})
@@ -970,18 +882,18 @@ my $code = '
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) . '
 
 		' . ($self->{"lookahead"}<0?'if':'unless')
-		. ' ($text =~ s/\A($_toksep)/$lastsep=$1 and ""/e and '
+		. ' ($text =~ s/\A($skip)/$lastsep=$1 and ""/e and '
 		. ($checkitempos? 'do {'.Parse::RecDescent::Production::incitempos().' 1} and ' : '')
 		. '  $text =~ s/\A' . quotemeta($self->{"pattern"}) . '//)
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
-			Parse::RecDescent::_trace(qq{<<Didn\'t match token>>},
+			Parse::RecDescent::_trace(qq{<<Didn\'t match terminal>>},
 						  Parse::RecDescent::_tracefirst($text))
 							if defined $::RD_TRACE;
 			last;
 		}
-		Parse::RecDescent::_trace(q{>>Matched token<< (return value: [}
+		Parse::RecDescent::_trace(q{>>Matched terminal<< (return value: [}
 						. $& . q{])},
 						  Parse::RecDescent::_tracefirst($text))
 							if defined $::RD_TRACE;
@@ -998,7 +910,6 @@ package Parse::RecDescent::InterpLit;
 
 sub issubrule { undef }
 sub isterminal { 1 }
-sub maychangetoksep { 0 }
 sub describe ($) { shift->{'description'} }
 
 sub new ($$$$)
@@ -1022,18 +933,12 @@ sub new ($$$$)
 	}, $class;
 }
 
-sub dump {
-    my ($self, $handle, $space) = @_;
-
-	print $handle qq!\t\t\t\t\tbless( { 'description' => q{$self->{'description'}} }, '${space}::SimpleLeaf') !;
-}             
-
 sub code($$$$)
 {
 	my ($self, $namespace, $rule, $checkitempos) = @_;
 	
 my $code = '
-		Parse::RecDescent::_trace(q{Trying token: [' . $self->describe
+		Parse::RecDescent::_trace(q{Trying terminal: [' . $self->describe
 					  . ']},
 					  Parse::RecDescent::_tracefirst($text),
 					  q{' . $rule->{name} . '})
@@ -1044,7 +949,7 @@ my $code = '
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) . '
 
 		' . ($self->{"lookahead"}<0?'if':'unless')
-		. ' ($text =~ s/\A($_toksep)/$lastsep=$1 and ""/e and '
+		. ' ($text =~ s/\A($skip)/$lastsep=$1 and ""/e and '
 		. ($checkitempos? 'do {'.Parse::RecDescent::Production::incitempos().' 1} and ' : '')
 		. '  do { $_tok = "' . $self->{"pattern"} . '"; 1 } and
 		     substr($text,0,length($_tok)) eq $_tok and
@@ -1053,12 +958,12 @@ my $code = '
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
-			Parse::RecDescent::_trace(q{<<Didn\'t match token>>},
+			Parse::RecDescent::_trace(q{<<Didn\'t match terminal>>},
 						  Parse::RecDescent::_tracefirst($text))
 							if defined $::RD_TRACE;
 			last;
 		}
-		Parse::RecDescent::_trace(q{>>Matched token<< (return value: [}
+		Parse::RecDescent::_trace(q{>>Matched terminal<< (return value: [}
 						. $_tok . q{])},
 						  Parse::RecDescent::_tracefirst($text))
 							if defined $::RD_TRACE;
@@ -1075,7 +980,6 @@ package Parse::RecDescent::Subrule;
 
 sub issubrule ($) { return $_[0]->{"subrule"} }
 sub isterminal { 0 }
-sub maychangetoksep { 1 }
 
 sub describe ($)
 {
@@ -1110,21 +1014,6 @@ sub new ($$$$;$$$)
 	}, $class;
 }
 
-sub dump {
-	my ($self, $handle, $space) = @_;
-
-	print $handle <<"_STUFF_";
-
-				bless( {
-					"subrule"   => q{$self->{"subrule"}},
-					"description" => q{ @{[ $self->describe() ]}
-					"lookahead" => @{[ defined $self->{"lookahead"} ? $self->{"lookahead"} : 'undef' ]},
-					"line"      => @{[ defined $self->{"line"} ? $self->{"line"} : 'undef' ]},
-					"implicit"  => @{[ defined $self->{"implicit"} ? qq[q[$self->{"implicit"}]] : 'undef' ]},
-				}, '${space}::Subrule')
-_STUFF_
-	
-}
 
 sub code($$$$)
 {
@@ -1176,7 +1065,6 @@ package Parse::RecDescent::Repetition;
 
 sub issubrule ($) { return $_[0]->{"subrule"} }
 sub isterminal { 0 }
-sub maychangetoksep { 1 }
 
 sub describe ($)
 {
@@ -1235,18 +1123,6 @@ sub new ($$$$$$$$$$)
 		"argcode"   => $argcode || undef,
 		"matchrule" => $matchrule,
 	}, $class;
-}
-
-sub dump {
-    my ($self, $handle, $space) = @_;
-
-		print $handle <<"_STUFF_";
-
-		bless( {
-			"subrule"   => q{$self->{"subrule"}},
-			"expected"  => @{[ defined $self->{"expected"} ? qq['$self->{"expected"}'] : 'undef' ]},
-		}, '@{[ref $self]}')
-_STUFF_
 }
 
 sub code($$$$)
@@ -1352,7 +1228,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-$VERSION = '1.51';
+$VERSION = '1.61';
 
 # BUILDING A PARSER
 
@@ -1389,38 +1265,7 @@ sub new ($$)
 
 sub Compile($$$$) {
 
-	my ($class, $name, $file, $grammar) = @_;
-
-	my $self = bless {
-		'rules'     	=> {},
-		'namespace' 	=> $name,
-		'compiling' 	=> 1,
-		'file'      	=> $file,
-		'startcode' 	=> '',
-		'deferrable'	=> 0,
-		}, $class;
-
-	if ($self->Replace($grammar)) {
-		my $code = $self->_code();
-
-		if ( eval "$code 1" ) {
-			print STDERR "compiling code into $self->{'file'}\n";
-
-			open (PARSER, ">$self->{'file'}") or do {
-				_error("couldn't open file $self->{'file'}");
-
-			};
-
-			$self->_dump(*PARSER);
-			print PARSER $code;
-			close PARSER;
-
-		} else {
-			_error("Internal error in generated parser code!");
-			$@ =~ s/at grammar/in grammar at/;
-			_hint($@);
-		}
-	}
+	die "Compilation of Parse::RecDescent grammars not yet implemented\n";
 }
 
 sub DESTROY {}  # SO AUTOLOADER IGNORES IT
@@ -1473,10 +1318,12 @@ my $COMMITMK		= '\A\s*<commit>';
 my $UNCOMMITMK		= '\A\s*<uncommit>';
 my $REJECTMK		= '\A\s*<reject>';
 my $CONDREJECTMK	= '\A\s*<reject:';
+my $SKIPMK		= '\A\s*<skip:';
 my $RESYNCMK		= '\A\s*<resync>';
 my $RESYNCPATMK		= '\A\s*<resync:';
 my $RULEVARPATMK	= '\A\s*<rulevar:';
 my $DEFERPATMK		= '\A\s*<defer:';
+my $TOKENPATMK		= '\A\s*<token:';
 my $AUTOERRORMK		= '\A\s*<error(\??)>';
 my $MSGERRORMK		= '\A\s*<error(\??):';
 my $UNCOMMITPROD	= $PROD.'\s*(?=<uncommit)';
@@ -1495,8 +1342,6 @@ sub _generate($$$;$)
 	my $lookahead = 0;
 	my $lookaheadspec = "";
 	$lines = _linecount($grammar) unless $lines;
-	$self->{_checktoksep} = ($grammar =~ /tokensep/)
-		unless $self->{_checktoksep};
 	$self->{_checkitempos} = ($grammar =~ /\@itempos\b|\$itempos\s*\[/)
 		unless $self->{_checkitempos};
 	my $line;
@@ -1614,9 +1459,22 @@ sub _generate($$$;$)
 			$code =~ /\A\s*<resync:(.*)>\Z/s;
 			$item = new Parse::RecDescent::Directive(
 				      'if ($text =~ s/\A'.$1.'//) { $return = 0; $& } else { undef }',
-				      $lookahead,$line,"<resync:$code>");
+				      $lookahead,$line,$code);
 			$prod and $prod->additem($item)
-			      or  _no_rule("<resync:$code>",$line);
+			      or  _no_rule($code,$line);
+		}
+		elsif ($grammar =~ m/$SKIPMK/
+			and do { ($code,$grammar)
+					= extract_codeblock($grammar,'<');
+				  $code })
+		{
+			_parse("a skip marker", $aftererror,$line);
+			$code =~ /\A\s*<skip:(.*)>\Z/s;
+			$item = new Parse::RecDescent::Directive(
+				      'my $oldskip = $skip; $skip='.$1.'; $oldskip',
+				      $lookahead,$line,$code);
+			$prod and $prod->additem($item)
+			      or  _no_rule($code,$line);
 		}
 		elsif ($grammar =~ m/$RULEVARPATMK/
 			and do { $code = extract_codeblock($grammar,'<>{}') } )
@@ -1648,6 +1506,32 @@ sub _generate($$$;$)
 			      or  _no_rule("<defer:$code>",$line);
 
 			$self->{deferrable} = 1;
+		}
+		elsif ($grammar =~ m/$TOKENPATMK/
+			and do { $code = extract_codeblock($grammar,'<>{}') } )
+		{
+			_parse("a token constructor", $aftererror,$line,$code);
+			$code =~ s/\A\s*<token:(.*)>\Z/$1/s;
+
+			my $types = eval 'no strict; local $SIG{__WARN__} = sub {0}; my @arr=('.$code.'); @arr' || (); 
+			if (!$types)
+			{
+				_error("Incorrect token specification: \"$@\"", $line);
+				_hint("The <token:...> directive requires a list
+				       of one or more strings representing possible
+				       types of the specified token. For example:
+				       <token:NOUN,VERB>");
+			}
+			else
+			{
+				$item = new Parse::RecDescent::Directive(
+					      'no strict;
+					       $return = { text => $item[-1] };
+					       @{$return->{type}}{'.$code.'} = (1..'.$types.');',
+					      $lookahead,$line,"<token:$code>");
+				$prod and $prod->additem($item)
+				      or  _no_rule("<token:$code>",$line);
+			}
 		}
 		elsif ($grammar =~ s/$COMMITMK//)
 		{
@@ -1713,24 +1597,24 @@ sub _generate($$$;$)
 		}
 		elsif ($grammar =~ s/$LITERAL//)
 		{
-			_parse("a literal token", $aftererror,$line);
+			_parse("a literal terminal", $aftererror,$line);
 			$item = new Parse::RecDescent::Literal($1,$lookahead,$line);
 			$prod and $prod->additem($item)
-			      or  _no_rule("literal token",$line,"'$1'");
+			      or  _no_rule("literal terminal",$line,"'$1'");
 		}
 		elsif ($grammar =~ s/$INTERPLIT//)
 		{
-			_parse("an interpolated literal token", $aftererror,$line);
+			_parse("an interpolated literal terminal", $aftererror,$line);
 			$item = new Parse::RecDescent::InterpLit($1,$lookahead,$line);
 			$prod and $prod->additem($item)
-			      or  _no_rule("interpolated literal token",$line,"'$1'");
+			      or  _no_rule("interpolated literal terminal",$line,"'$1'");
 		}
 		elsif ($grammar =~ s/$TOKEN//)
 		{
-			_parse("a /../ pattern token", $aftererror,$line);
+			_parse("a /../ pattern terminal", $aftererror,$line);
 			$item = new Parse::RecDescent::Token($1,'/',$3?$3:'',$lookahead,$line);
 			$prod and $prod->additem($item)
-			      or  _no_rule("regex token",$line,"/$1/");
+			      or  _no_rule("pattern terminal",$line,"/$1/");
 		}
 		elsif ($grammar =~ m/$MTOKEN/
 			and do { ($code,$grammar,@components)
@@ -1739,11 +1623,11 @@ sub _generate($$$;$)
 		      )
 
 		{
-			_parse("an m/../ pattern token", $aftererror,$line,$code);
+			_parse("an m/../ pattern terminal", $aftererror,$line,$code);
 			$item = new Parse::RecDescent::Token(@components[3,2,8],
 							     $lookahead,$line);
 			$prod and $prod->additem($item)
-			      or  _no_rule("regex token",$line,$code);
+			      or  _no_rule("pattern terminal",$line,$code);
 		}
 		elsif ($grammar =~ m/$MATCHRULE/
 				and $code = extract_bracketed($grammar,'<')
@@ -1953,93 +1837,12 @@ sub _generate($$$;$)
 
 	if ($ERRORS and !_verbosity("HINT"))
 	{
-		$::RD_HINT = 1;
+		local $::RD_HINT = 1;
 		_hint('Set $::RD_HINT (or -RD_HINT if you\'re using "perl -s")
 		       for hints on fixing these problems.');
-		undef $::RD_HINT;
+		# undef $::RD_HINT;
 	}
 	return $ERRORS ? undef : $self;
-}
-
-
-#================================================================
-# _dump
-#================================================================
-sub _dump {
-	my ($self, $handle) = @_;
-
-	print $handle "package $self->{'namespace'};\n";
-
-	print $handle <<'_STATIC_';
-use Parse::RecDescent;
-
-use vars qw[ $AUTOLOAD @ISA ];
-
-@ISA = qw[ Parse::RecDescent ];
-
-
-sub AUTOLOAD 	# ($parser, $text; $linenumber)
-{
-    die "Could not find method: $AUTOLOAD\n" unless ref $_[0];
-	my $class = ref($_[0]) || $_[0];
-	my $text = $_[1];
-	$_[0]->{lastlinenum} = $_[2]||_linecount($_[1]);
-	$_[0]->{offsetlinenum} = $_[0]->{lastlinenum};
-	$AUTOLOAD =~ s/$class/$_[0]->{namespace}/;
-	no strict "refs";
-	&{$AUTOLOAD}($_[0],$text,undef,undef,$args);
-}
-
-sub new {
-    my ($class) = @_;
-
-   $class = ref($class) || $class;
-
-   return 
-
-_STATIC_
-
-
-	print $handle <<"_STUFF_" ;
-	bless {
-	"namespace" => q{$self->{"namespace"}},
-	"tokensep" => @{[defined $self->{"tokensep"} ? 'q{$self->{"tokensep"}' : 'undef']},
-	"rules" => {
-_STUFF_
-
-	my ($rname, $rule);
-	while (($rname, $rule) = each %{$self->{'rules'}}) {
-		print $handle qq[ '$rname' => ];
-		$rule->dump($handle, $self->{"namespace"});
-		print $handle ",\n";
-	}
-	print $handle qq! },\n}, '$self->{"namespace"}';\n}\n!;
-
-	print $handle <<"_PKG_";
-
-package $self->{'namespace'}::SimpleLeaf;
-
-sub expected { shift->{'description'} }
-sub describe { shift->{'description'} }
-sub issubrule { undef }
-
-package $self->{'namespace'}::Production;
-_PKG_
-
-	print $handle <<'_PRODUCTION_';
-
-sub describe ($)
-{
-	return join ' ', map { $_->describe or () } @{$_[0]->{items}};
-}
-
-sub expected ($)
-{
-	my $itemcount = scalar @{$_[0]->{"items"}};
-	return ($itemcount) ? $_[0]->{"items"}[0]->describe() : '';
-}
-_PRODUCTION_
-
 }
 
 
@@ -2142,7 +1945,8 @@ sub _check_grammar ($)
 sub _code($)
 {
 	my $self = shift;
-	my $code = "package $self->{namespace};\nuse strict;\n$self->{startcode}";
+	my $code = "package $self->{namespace};\nuse strict;\nuse vars qw(\$skip);\n\$skip = '$skip'\n;$self->{startcode}";
+	$code .= "push \@$self->{namespace}\::ISA, 'Parse::RecDescent';";
 	$self->{"startcode"} = '';
 
 	my $rule;
@@ -2165,12 +1969,13 @@ sub AUTOLOAD	# ($parser, $text; $linenum, @args)
 {
 	die "Could not find method: $AUTOLOAD\n" unless ref $_[0];
 	my $class = ref($_[0]) || $_[0];
-	my $text = $_[1];
+	my $text = ref($_[1]) ? ${$_[1]} : $_[1];
 	$_[0]->{lastlinenum} = $_[2]||_linecount($_[1]);
 	$_[0]->{offsetlinenum} = $_[0]->{lastlinenum};
 	$_[0]->{fulltext} = $_[1];
 	$_[0]->{fulltextlen} = length $_[1];
 	$_[0]->{deferred} = [];
+	$_[0]->{errors} = [];
 	my @args = @_[3..$#_];
 	my $args = sub { [ @args ] };
 				 
@@ -2178,10 +1983,16 @@ sub AUTOLOAD	# ($parser, $text; $linenum, @args)
 	no strict "refs";
 	my $retval = &{$AUTOLOAD}($_[0],$text,undef,undef,$args);
 
-	foreach ( @{$_[0]->{deferred}} )
+	if (defined $retval)
 	{
-		&$_;
+		foreach ( @{$_[0]->{deferred}} ) { &$_; }
 	}
+	else
+	{
+		foreach ( @{$_[0]->{errors}} ) { _error(@$_); }
+	}
+
+	if (ref $_[1]) { ${$_[1]} = $text }
 
 	return $retval;
 }

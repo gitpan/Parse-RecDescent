@@ -22,8 +22,7 @@ BEGIN
 
 { my $WithinComment; }
 
-program	: { $thisparser->{tokensep}= ''; } <reject> # no token sep
-        | part(s)
+program	: <skip:''> part(s)
 
 part	: comment
         | ptext

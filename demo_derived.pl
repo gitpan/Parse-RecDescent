@@ -4,6 +4,11 @@
 
 use Parse::RecDescent;
 
+sub Parse::RecDescent::f
+{
+	print "Parse::RecDescent::f\n";
+}
+
 @DerParser::ISA = qw { Parse::RecDescent };
 
 $grammar =
@@ -17,7 +22,7 @@ q{
 	field   : /field/ ident /is/ ident 
 
 	ident   : /[A-Za-z]\w*/
-			{ $return = $item[1]; }
+			{ f(); $return = $item[1]; }
  };
 
 $parse = new DerParser ( $grammar ) || die "\n";

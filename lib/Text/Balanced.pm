@@ -19,12 +19,13 @@ $VERSION = '1.50';
 				&extract_codeblock
 				&extract_variable
 				&extract_tagged
+				&extract_multiple
 			       ) ] );
 
 Exporter::export_ok_tags('ALL');
 
 # PAY NO ATTENTION TO THE TRACE BEHIND THE CURTAIN
-# sub _trace($) { print $_[0], "\n"; }
+# sub _trace($) { print STDERR $_[0], "\n"; }
 sub _trace($) {}
 
 # HANDLE RETURN VALUES IN VARIOUS CONTEXTS
@@ -329,6 +330,12 @@ sub extract_codeblock (;$$$$)
 			$patvalid = 0;
 			next;
 		}
+
+		if ($text =~ s/\A\s*#.*//)
+		{
+			next;
+		}
+
 		if ($text =~ s/\A\s*$rdel//)
 		{
 			$matched = ($1 eq $closing);
@@ -341,7 +348,7 @@ sub extract_codeblock (;$$$$)
 			last;
 		}
 
-		if ($text =~ s!\A\s*(=~|split|grep|map|return|;)!!)
+		if ($text =~ s!\A\s*(=~|\!~|split|grep|map|return|;|[|]{1,2}|[&]{1.2})!!)
 		{
 			$patvalid = 1;
 			next;
@@ -396,7 +403,7 @@ sub extract_quotelike (;$$)
 	my $text = $_[0] ? $_[0] : defined $_ ? $_ : '';
 	my $wantarray = wantarray;
 	my @fail = (wantarray,undef,$text);
-	my $pre  = $_[1] ? $_[1] : '\s*';
+	my $pre  = defined $_[1] ? $_[1] : '\s*';
 
 	my $ldel1  = '';
 	my $block1 = '';
@@ -517,6 +524,55 @@ sub extract_quotelike (;$$)
 			$rdel2,
 			$1?$1:''	# MODIFIERS
 			;
+}
+
+my $def_func = 
+[
+	sub { extract_variable($_[0], '') },
+	sub { extract_quotelike($_[0],'') },
+	sub { extract_codeblock($_[0],'{}','') },
+];
+
+sub extract_multiple (;$$$)	# ($text, $functions_ref, $max_fields)
+{
+	my $text = defined $_[0] ? $_[0]    : $_;
+	my @func = defined $_[1] ? @{$_[1]} : @$def_func;
+	my $max  = defined $_[2] && $_[2]>0 ? $_[2] : 1_000_000_000;
+
+	my @fields = ();
+	my $unknown = "";
+	my $field = "";
+	my $remainder = "";
+
+	FIELD: while ($text && @fields<$max-1)
+	{
+		foreach my $func ( @func )
+		{
+			($field,$remainder) = &$func($text);
+			if ($field)
+			{
+				if ($unknown)
+				{
+					push @fields, $unknown;
+					$unknown = "";
+				}
+				push @fields, $field;
+				$field = "";
+				$text = $remainder;
+				next FIELD;
+			}
+		}
+		$unknown .= substr($text,0,1);
+		substr($text,0,1) = "";
+	}
+	push @fields, $unknown if $unknown;
+	push @fields, $text    if $text;
+
+	splice @fields, $max-1, @fields-$max+1,
+		join('',@fields[$max-1..$#fields])
+			if @fields>$max;
+
+	return @fields;
 }
 
 1;

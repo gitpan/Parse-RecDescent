@@ -4,8 +4,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.51 of Parse::RecDescent,
-released August 27, 1998.
+This document describes version 1.61 of Parse::RecDescent,
+released October 21, 1998.
 
 =head1 SYNOPSIS
 
@@ -35,7 +35,7 @@ released August 27, 1998.
  # Change the universal token separator (prefix) pattern
  # (the default is: '\s*'):
 
-	$Parse::RecDescent::tokensep = '[ \t]+';
+	$Parse::RecDescent::skip = '[ \t]+';
 
 
  # Replace productions of existing rules (or create new ones)
@@ -125,8 +125,18 @@ looks like this:
 
 
 If the rule through which parsing is initiated succeeds, its value (see below)
-is returned. Failure to generate the original parser or failure to match a test
+is returned. Failure to generate the original parser or failure to match a text
 is indicated by returning C<undef>.
+
+Normally, the parser has no effect on the original text. So in the previous example
+the value of $text would be unchanged after having been parsed.
+
+If, however, the text to be matched is passed by reference:
+
+	$parser->startrule(\$text)
+
+then any text which was consumed during the match will be removed from the
+start of $text.
 
 
 =head2 Rules
@@ -301,78 +311,20 @@ the following code is required:
 		});
 
 
-=head2 Token Separators
+=head2 Terminal Separators
 
-For the purpose of matching, each token in a production is considered
-to be preceded by a "token separator" - a pattern which must be
-matched before a token match is attempted. By default, the token
+For the purpose of matching, each terminal in a production is considered
+to be preceded by a "separator" - a pattern which must be
+matched before a token match is attempted. By default, the 
 separator is optional whitespace (which always matches, at least
-trivially), but this default may be reset at several different
-levels.
+trivially), but this default may be reset in any production.
 
-The variable C<$Parse::RecDescent::tokensep> stores the universal
-token separator, which is the default for all token matches in all parsers
+The variable C<$Parse::RecDescent::skip> stores the universal
+separator, which is the default for all terminal matches in all parsers
 built with C<Parse::RecDescent>.
 
-The token separator for an individual parser (for example, C<$psr>) can be reset by
-changing C<$psr-E<gt>{"tokensep"}> (or
-C<$thisparser-E<gt>{"tokensep"}> within a grammar action - see
-L<"Actions> below).
-
-Likewise the token separators for individual rules or even individual
-productions can be changed by altering the corresponding
-C<{"tokensep"}> member of the appropriate sub-object (see the
-description of C<$thisrule> and C<$thisprod> in the next section.)
-
-To remove a redefinition of the token separator for a particular,
-simply assign it an undefined value. Its value will then revert to
-the that of the next higher level (for example, undefining a
-production's token separator causes it to default to the enclosing
-rule's separator which may in turn default to the parser's, etc.).
-If the universal token separator
-C<Parse::RecDescent::tokensep> is undefined, its default value
-reverts to the original default of optional whitespace.
-
-The full set of rules for determining which of several possible
-token separators is selected at any point is:
-
-=over 4
-
-=item 1.
-
-If the local variable C<$tokensep> is set, use that.
-
-=item 2.
-
-Otherwise, if the current production's token separator
-(that is, C<$thisprod-E<gt>{"tokensep"}>) is set, use that.
-
-=item 3.
-
-Otherwise, if the current rule's token separator
-(that is, C<$thisrule-E<gt>{"tokensep"}>) is set, use that.
-
-=item 4.
-
-Otherwise, if the current parsers's token separator
-(that is, C<$thisparser-E<gt>{"tokensep"}>) is set, use that.
-
-=item 5.
-
-Otherwise, if the global token separator 
-(that is, C<$Parse::RecDescent::tokensep>) is set, use that.
-
-=item 6.
-
-Otherwise, use the default token separator (that is, optional whitespace).
-
-=back
-
-Note that (to reduce overheads) changes in the token separator are only
-checked for at the start of a production or after an action.
-Furthermore, if the string "tokensep" does not appear anywhere in the
-complete grammar, then changes in the token separator are only checked
-for at the start of each rule.
+The separator for an individual production can be altered
+by using the C<E<lt>skip:...E<gt>> directive (see below).
 
 
 =head2 Actions
@@ -444,6 +396,10 @@ returned if the production succeeds.
 
 The current state of commitment to the current production (see L<"Directives">
 below).
+
+=item C<$skip>
+
+The current terminal separator (see L<"Directives"> below).
 
 =item C<$text>
 
@@ -877,10 +833,11 @@ get the disaster you deserve :-).
 =head2 Directives
 
 Directives are special pre-defined actions which may be used to alter
-the behaviour of the parser. There are eight directives:
+the behaviour of the parser. There are currently ten directives:
 C<E<lt>commitE<gt>>, C<E<lt>uncommitE<gt>>, C<E<lt>rejectE<gt>>,
+C<E<lt>skipE<gt>>,
 C<E<lt>resyncE<gt>>, C<E<lt>errorE<gt>>, C<E<lt>rulevarE<gt>>,
-C<E<lt>matchruleE<gt>>, and C<E<lt>defer<gt>>.
+C<E<lt>matchruleE<gt>>, C<E<lt>defer<gt>>, and C<E<lt>tokenE<gt>>.
 
 =over 4
 
@@ -984,6 +941,58 @@ C<E<lt>reject:...E<gt>> directives are I<never> "optimized away" in
 this manner, even if they are always guaranteed to fail (for example:
 C<E<lt>reject:1E<gt>>)
 
+
+
+=item Skipping between terminals
+
+The C<E<lt>skip<gt>> directive enables the terminal separator used in
+a production to be changed. For example:
+
+	OneLiner: Command <skip:'[ \t]*'> Arg(s) /;/
+
+causes only blanks and tabs to be skipped between terminals in the C<Arg>
+subrule (and any of I<its> subrules>, and also before the final C</;/> terminal.
+Once the production is complete, the previous terminal separator is
+reinstated. Note that this implies that distinct productions of a rule
+must reset their terminal separators individually.
+
+The C<E<lt>skip<gt>> directive evaluates to the I<previous> terminal separator,
+so it's easy to reinstate a separator later in a production:
+
+	Command: <skip:","> CSV(s) <skip:$item[1]> Modifier
+
+The value specified after the colon is interpolated into a pattern, so all of
+the following are equivalent (though their efficiency increases down the list):
+
+	<skip: "$colon|$comma">   # ASSUMING THE VARS HOLD THE OBVIOUS VALUES
+
+	<skip: ':|,'>
+
+	<skip: q{[:,]}>
+
+	<skip: qr/[:,]/>
+
+There is no way of directly setting the separator for
+an entire rule, except as follows:
+
+	Rule: <skip: '[ \t]*'> Prod1
+	    | <skip: '[ \t]*'> Prod2a Prod2b
+	    | <skip: '[ \t]*'> Prod3
+
+or, better:
+
+	Rule: <skip: '[ \t]*'>
+	    (
+		Prod1
+	      | Prod2a Prod2b
+	      | Prod3
+	    )
+
+
+B<Note: Up to release 1.51 of Parse::RecDescent, an entirely different
+mechanism was used for specifying terminal separators. The current method
+is not backwards-compatible with that early approach. The current approach
+is stable and will not to change again.>
 
 
 =item Resynchronization
@@ -1137,7 +1146,17 @@ C<E<lt>errorE<gt>>. For example:
 	    | <uncommit> <error?> <reject>
 	    | <resync>
 
-There is one situation in which the output of the various types of
+
+Error messages generated by the various C<E<lt>error...E<gt>> directives
+are only displayed once parsing ultimately fails. 
+C<E<lt>error...E<gt>> directives which cause one production of a rule
+to fail are automatically cancelled if another production subsequently
+causes the rule to succeed. This means that you can put 
+C<E<lt>error...E<gt>> directives wherever useful diagnosis can be done,
+and only those associated with actual parser failure will ever be
+displayed.
+
+There is one other situation in which the output of the various types of
 error directive is suppressed; namely, when the rule containing them
 is being parsed as part of a "look-ahead" (see L<"Look-ahead">). In this
 case, the error directive will still cause the rule to fail, but will do
@@ -1433,6 +1452,58 @@ customized data structure for specific input.
 Whether or not the action it specifies is ever executed,
 a C<E<lt>defer:...E<gt>> directive always succeeds, returning the 
 number of deferred actions currently queued at that point.
+
+
+=item Constructing tokens
+
+Eventually, Parse::RecDescent will be able to parse tokenized input, as
+well as ordinary strings. In preparation for this joyous day, the
+C<E<lt>token:...E<gt>> directive has been provided.
+This directive creates a token which will be suitable for
+input to a Parse::RecDescent parser (when it eventually supports
+tokenized input).
+
+The text of the token is the value of the
+immediately preceding item in the production. A 
+C<E<lt>token:...E<gt>> directive always succeeds with a return
+value which is the hash reference that is the new token. It also
+sets the return value for the production to that hash ref.
+
+The C<E<lt>token:...E<gt>> directive makes it easy to build
+a Parse::RecDescent-compatible lexer in Parse::RecDescent:
+
+	my $lexer = new Parse::RecDescent q
+	{
+		lex:	token(s)
+
+		token:	/a\b/			   <token:INDEF>
+		     |  /the\b/			   <token:DEF>
+		     |  /fly\b/			   <token:NOUN,VERB>
+		     |	/[a-z]+/i { lc $item[1] }  <token:ALPHA>
+		     |  <error: Unknown token>
+
+	};
+
+which will eventually be able to be used with a regular Parse::RecDescent
+grammar:
+
+	my $parser = new Parse::RecDescent q
+	{
+		startrule: subrule1 subrule 2
+		
+		# ETC...
+	};
+
+either with a pre-lexing phase:
+
+	$parser->startrule( $lexer->lex($data) );
+
+or with a lex-on-demand approach:
+
+	$parser->startrule( sub{$lexer->token(\$data)} );
+
+But at present, only the C<E<lt>token:...E<gt>> directive is
+actually implemented. The rest is vapourware.
 
 =back
 
