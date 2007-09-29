@@ -10,7 +10,6 @@ q{
 
 	command  :	directive
 		 |	evaluation
-		 |	<error>
 
 	directive:	'only prefix'
 			    { $thisparser->{deleted} = {infix=>1,postfix=>1} }

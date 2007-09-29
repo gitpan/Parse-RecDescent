@@ -2,7 +2,7 @@
 $|++;
 
 use Parse::RecDescent;
-$::RD_HINT = 1;
+# $::RD_TRACE = 1;
 
 my $start = "START";		# start symbol
 
@@ -26,7 +26,7 @@ my $start = "START";		# start symbol
 grammar: rule(s) /\Z/ { \%grammar; }
 
 ## rule returns identifier (not used)
-rule: identifier ":" defn  {
+rule: identifier ":" defn ';' {
            push @{$grammar{$item[1]}{is}}, @{$item[3]};
            $grammar{$item[1]}{defined}{$itempos[1]{line}{to}}++;
            $item[1];

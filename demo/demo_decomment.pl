@@ -1,6 +1,6 @@
 #!/usr/local/bin/perl -ws
 
-$::RD_TRACE = 1;
+# $::RD_TRACE = 1;
 
 # REMOVE COMMENTS FROM C++ CODE
 

@@ -1,7 +1,3 @@
-#! /usr/local/bin/perl -w
-
-# The full monty
-
 use Parse::RecDescent;
 
 local $/;
@@ -10,10 +6,7 @@ my $parser = Parse::RecDescent->new($grammar);
 
 my $text = <>;
 
-$tree = $parser->translation_unit($text) or die "bad C code";
-
-use Data::Dumper 'Dumper';
-print Dumper [ $tree ];
+my $parse_tree = $parser->translation_unit($text) or die "bad C code";
 
 __DATA__
 

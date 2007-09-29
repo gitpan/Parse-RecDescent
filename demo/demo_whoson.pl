@@ -6,7 +6,7 @@ use vars qw( @base @man @attempt );
 
 use Parse::RecDescent;
 
-sub Parse::RecDescent::choose { $_[1 + int rand $#_]; }
+sub Parse::RecDescent::choose { $_[int rand @_]; }
 
 $abbott = new Parse::RecDescent <<'EOABBOTT';
 

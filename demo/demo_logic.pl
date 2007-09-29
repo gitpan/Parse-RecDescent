@@ -2,6 +2,8 @@
 
 # PARSE LOGICAL EXPRESSIONS
 
+$RD::TRACE=1;
+
 use Parse::RecDescent;
 
 $grammar =
@@ -16,7 +18,7 @@ q{
 	conj	:	unary ('and' unary)(s?)
 
 	unary	:	'not' atom
-		|	'(' expr ')'
+		|	'(' disj ( ')' | <error> )
 		|	atom
 
 	atom	:	/<.+?>/
@@ -32,6 +34,6 @@ while (<>)
 {
 	
 	if (/^\.$/) { defined $parse->expr($input) or print "huh?\n"; $input = '' }
-	else	    { $input .= $_ }
+	else	    { chomp; $input .= " $_" }
 	print "> ";
 }

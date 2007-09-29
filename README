@@ -1,7 +1,4 @@
-==============================================================================
-                 Release of version 1.94 of Parse::RecDescent
-==============================================================================
-
+Parse::RecDescent version 1.95.1
 
 NAME
 
@@ -35,8 +32,6 @@ DESCRIPTION
 	* User-definable reduce-reduce conflict resolution via
 	  "scoring" of matching productions.
 
-    See the file "RecDescent.pod" for excruciating detail on all of this.
-
 
 LIMITATIONS
 
@@ -47,8 +42,8 @@ LIMITATIONS
 
 PREREQUISITES
 
-    Parse::RecDescent requires Text::Balanced, which is included in the
-    distribution.
+    Parse::RecDescent requires the Text::Balanced module, which is available
+    from the CPAN.
 
 
 INSTALLATION
@@ -71,26 +66,33 @@ AUTHOR
     Damian Conway (damian@csse.monash.edu.au)
 
 
-COPYRIGHT
+INSTALLATION
 
-     Copyright (c) 1997-2000, Damian Conway. All Rights Reserved.
-     This module is free software. It may be used, redistributed
-     and/or modified under the terms of the Perl Artistic License
-          (see http://www.perl.com/perl/misc/Artistic.html)
+To install this module, run the following commands:
 
-
-==============================================================================
-
-CHANGES IN VERSION 1.94
+    perl Makefile.PL
+    make
+    make test
+    make install
 
 
-	- Replaced 'our' with 'use vars' to reinstate 5.005 compatibility.
+Alternatively, to install with Module::Build, you can use the following commands:
+
+    perl Build.PL
+    ./Build
+    ./Build test
+    ./Build install
 
 
-==============================================================================
 
-AVAILABILITY
+DEPENDENCIES
 
-Parse::RecDescent has been uploaded to the CPAN
+None.
 
-==============================================================================
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 1997-2007, Damian Conway
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
