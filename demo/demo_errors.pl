@@ -1,10 +1,13 @@
-#! /usr/local/bin/perl -sw
+#! /opt/local/bin/perl5.10.0
+use v5.10;
+use warnings;
+
 
 # THE ONLY TRUE MISTAKES ARE THE ONES YOU NEVER MAKE
 
-BEGIN {
-        close STDERR and open STDERR, '>./STDERR' or die $!;
-}
+#BEGIN {
+#        close STDERR and open STDERR, '>./STDERR' or die $!;
+#}
 use Parse::RecDescent;
 
 $grammar =

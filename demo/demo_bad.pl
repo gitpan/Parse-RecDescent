@@ -1,13 +1,18 @@
-#! /usr/local/bin/perl -sw
+#! /opt/local/bin/perl5.10.0
+use v5.10;
+use warnings;
+
 
 # SHOWCASE VARIOUS ERROR MESSAGES WITH A VERY UNWELL GRAMMAR
 
 use Parse::RecDescent;
 
-open (Parse::RecDescent::ERROR, ">errfile") or die;
+open (Parse::RecDescent::ERROR, ">-") or die;
 
 $grammar =
 q{
+    <warn:3>
+
 	typedef : a ... ...! ... b
 	typedef : a ...!...!...!...! b
 		| /type/ ident /has/ field(s) /end type/

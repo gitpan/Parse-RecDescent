@@ -2,7 +2,7 @@
 
 # WHO'S ON FIRST?
 
-use vars qw( @base @man @attempt );
+use vars qw( @base @man @attempt );   # This is a comment
 
 use Parse::RecDescent;
 

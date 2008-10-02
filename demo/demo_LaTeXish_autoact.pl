@@ -1,12 +1,14 @@
-#! /usr/local/bin/perl -w
+#! /opt/local/bin/perl5.10.0
+
 
 use Parse::RecDescent;
 
-# $RD_TRACE = 1;
-
-$RD_AUTOACTION = q{ bless \%item, $item{__RULE__} };
+#$RD_TRACE = 1;
+#$RD_HINT = 1;
 
 my $parser = Parse::RecDescent->new(<<'EOGRAMMAR');
+
+    <autoaction: { bless \%item, $item{__RULE__} } >
 
 	file:		element(s)
 
@@ -22,22 +24,20 @@ my $parser = Parse::RecDescent->new(<<'EOGRAMMAR');
 
 	literal:	/[^][\\$&%#_{}~^ \t\n]+/
 
-
 EOGRAMMAR
-
 
 local $/;
 my $tree = $parser->file(<DATA>);
 
-use AutoDump;
-#show $tree;
+use Data::Dumper 'Dumper';
+warn Dumper [ $tree ];
 
 $tree->explain(0);
 
 sub file::explain
 {
 	my ($self, $level) = @_;
-	for (@{$self->{element}})
+	for (@{$self->{'element(s)'}})
 	{
 		$_->explain($level);
 		print "\n";
@@ -53,36 +53,36 @@ sub element::explain
 sub command::explain
 {
 	my ($self, $level) = @_;
-	print "\t"x$level, "Command: $self->{literal}{1}\n";
+	print "\t"x$level, "Command: $self->{literal}{__PATTERN1__}\n";
 	print "\t"x$level, "\tOptions:\n";
-	$self->{options}[0]->explain($level+2) if @{$self->{options}};
+	$self->{'options(?)'}[0]->explain($level+2) if @{$self->{'options(?)'}};
 	print "\t"x$level, "\tArgs:\n";
-	$self->{args}[0]->explain($level+2) if @{$self->{args}};
+	$self->{'args(?)'}[0]->explain($level+2) if @{$self->{'args(?)'}};
 }
 
 sub options::explain
 {
 	my ($self, $level) = @_;
-	$_->explain($level) foreach @{$self->{__DIRECTIVE1__}};
+	$_->explain($level) foreach @{$self->{'option(s?)'}};
 }
 
 sub args::explain
 {
 	my ($self, $level) = @_;
-	$_->explain($level) foreach @{$self->{element}};
+	$_->explain($level) foreach @{$self->{'element(s?)'}};
 }
 
 
 sub option::explain
 {
 	my ($self, $level) = @_;
-	print "\t"x$level, "Option: $self->{1}\n";
+	print "\t"x$level, "Option: $self->{__PATTERN1__}\n";
 }
 
 sub literal::explain
 {
 	my ($self, $level) = @_;
-	print "\t"x$level, "Literal: $self->{1}\n";
+	print "\t"x$level, "Literal: $self->{__PATTERN1__}\n";
 }
 
 

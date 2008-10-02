@@ -1,4 +1,7 @@
-#! /usr/local/bin/perl -sw
+#! /opt/local/bin/perl5.10.0
+use v5.10;
+use warnings;
+
 
 # WHO IS NEXT TO WHOM?
 
@@ -6,6 +9,8 @@ use Parse::RecDescent;
 
 $grammar =
 q{
+    <nocheck>
+
 	inputs   :	input(s)
 
 	input	 :	who_question "\n" {1}
