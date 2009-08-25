@@ -553,3 +553,16 @@ Revision history for Parse-RecDescent
     - Added: <warn> <hint> <trace_build> <trace_parse> <nocheck>
 
     -
+
+
+1.962.0  Tue Aug 25 19:45:15 2009
+
+    - Doc bug fix (thanks Christophe)
+
+    - Fixed assymmetrical push/pop on @lines tracker (thanks Peter!)
+
+    - Bumped sub-version number hugely to fix CPAN indexing (thanks Jerome)
+
+    - Remove all occurrences of $& so we don't affect other regular expressions.
+
+    - Perl 5.6.0 required for use of $+[0] and $-[0] for replacement of $&.
