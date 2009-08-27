@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Parse-RecDescent
-version:             1.962.0
+version:             1.962.1
 abstract:            Generate Recursive-Descent Parsers
 license:             ~
 author:              

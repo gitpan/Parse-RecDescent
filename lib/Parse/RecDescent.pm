@@ -1130,8 +1130,7 @@ my $code = '
         ' . ($self->{"lookahead"}<0?'if':'unless')
         . ' ($text =~ s/\A($skip)/$lastsep=$1 and ""/e and '
         . ($check->{itempos}? 'do {'.Parse::RecDescent::Production::incitempos().' 1} and ' : '')
-        . '  $text =~ s' . $ldel . '(\A(?:' . $self->{"pattern"} . '))'
-                 . $rdel . $sdel . $mod . ')
+        . '  $text =~ m' . $ldel . '\A(?:' . $self->{"pattern"} . ')' . $rdel . $mod . ')
         {
             '.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
             $expectation->failed();
@@ -1141,7 +1140,8 @@ my $code = '
 
             last;
         }
-        $current_match = $1;
+		$current_match = substr($text, $-[0], $+[0] - $-[0]);
+        substr($text,0,length($current_match),q{});
         Parse::RecDescent::_trace(q{>>Matched terminal<< (return value: [}
                         . $current_match . q{])},
                           Parse::RecDescent::_tracefirst($text))
@@ -1203,7 +1203,7 @@ my $code = '
         ' . ($self->{"lookahead"}<0?'if':'unless')
         . ' ($text =~ s/\A($skip)/$lastsep=$1 and ""/e and '
         . ($check->{itempos}? 'do {'.Parse::RecDescent::Production::incitempos().' 1} and ' : '')
-        . '  $text =~ s/(\A' . quotemeta($self->{"pattern"}) . ')//)
+        . '  $text =~ m/\A' . quotemeta($self->{"pattern"}) . '/)
         {
             '.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
             $expectation->failed();
@@ -1212,7 +1212,8 @@ my $code = '
                             if defined $::RD_TRACE;
             last;
         }
-        $current_match = $1;
+		$current_match = substr($text, $-[0], $+[0] - $-[0]);
+        substr($text,0,length($current_match),q{});
         Parse::RecDescent::_trace(q{>>Matched terminal<< (return value: [}
                         . $current_match . q{])},
                           Parse::RecDescent::_tracefirst($text))
@@ -1593,7 +1594,7 @@ sub code($$$$)
             ' . $op->code(@_[1..2]) . '
             ' . ($op->isterminal() ? 'pop @item;' : '$backtrack=1;' ) . '
             ' . (ref($op) eq 'Parse::RecDescent::Token'
-                ? 'if (defined $1) {push @item, $item{'.($self->{name}||$self->{hashname}).'}=$1; $backtrack=1;}'
+                ? 'if (defined $2) {push @item, $item{'.($self->{name}||$self->{hashname}).'}=$2; $backtrack=1;}'
                 : "" ) . '
             ' . $rightarg->code(@_[1..2]) . '
             $savetext = $text;
@@ -1619,7 +1620,7 @@ sub code($$$$)
             ' . $op->code(@_[1..2]) . '
             $savetext = $text;
             ' . ($op->isterminal() ? 'pop @item;' : "" ) . '
-            ' . (ref($op) eq 'Parse::RecDescent::Token' ? 'do { push @item, $item{'.($self->{name}||$self->{hashname}).'}=$1; } if defined $1;' : "" ) . '
+            ' . (ref($op) eq 'Parse::RecDescent::Token' ? 'do { push @item, $item{'.($self->{name}||$self->{hashname}).'}=$2; } if defined $2;' : "" ) . '
           }
           $text = $savetext;
           pop @item if $backtrack;
@@ -1722,7 +1723,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-use version; our $VERSION = qv('1.962.0');
+use version; our $VERSION = qv('1.962.1');
 
 # BUILDING A PARSER
 
@@ -3381,7 +3382,7 @@ the value associated with the repeated subrule "statement(s)" is a reference
 to an array containing the values matched by each call to the individual
 subrule "statement".
 
-Repetition modifieres may include a separator pattern:
+Repetition modifiers may include a separator pattern:
 
     program: statement(s /;/)
 
@@ -5965,6 +5966,25 @@ importantly) is the problem important enough to even warrant the non-trivial
 effort of building an automated solution?
 
 =back
+
+=head1 SUPPORT
+
+=head2 Mailing List
+
+Visit L<http://www.perlfoundation.org/perl5/index.cgi?parse_recdescent> to sign up for the mailing list.
+
+L<http://www.PerlMonks.org> is also a good place to ask questions.
+
+=head2 FAQ
+
+Visit L<Parse::RecDescent::FAQ> for answers to frequently (and not so
+frequently) asked questions about Parse::RecDescent
+
+=head1 SEE ALSO
+
+L<Regexp::Grammars> provides Parse::RecDescent style parsing using native
+Perl 5.10 regular expressions.
+
 
 =head1 LICENCE AND COPYRIGHT
 

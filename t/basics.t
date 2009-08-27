@@ -12,7 +12,7 @@ use Parse::RecDescent;
 $loaded = 1;
 print "ok 1\n";
 
-sub debug { $D || 0 }
+sub debug { $D || $D || 0 }
 
 my $count = 2;
 sub ok($;$)

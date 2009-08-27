@@ -78,3 +78,5 @@ demo/demo_tokens.pl
 demo/demo_undumper.pl
 demo/demo_whoson.pl
 t/basics.t
+t/re_capture_return.t
+t/separated_repetition.t
