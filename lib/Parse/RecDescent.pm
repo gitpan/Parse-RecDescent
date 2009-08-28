@@ -1723,7 +1723,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-use version; our $VERSION = qv('1.962.1');
+use version; our $VERSION = qv('1.962.2');
 
 # BUILDING A PARSER
 

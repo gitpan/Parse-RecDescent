@@ -571,3 +571,7 @@ Revision history for Parse-RecDescent
 1.962.1  Thu Aug 27 21:39:30 2009
 
     - Fixed subtle bug in leftop and rightop caused by removal of $&
+
+
+1.962.2  Fri Aug 28 13:39:33 2009
+

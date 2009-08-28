@@ -2,7 +2,6 @@ use strict;
 use warnings;
 
 use Test::More 'no_plan';
-use Data::Dumper;
 use Parse::RecDescent;
 
 my $parser = Parse::RecDescent->new(<<'EOG');
@@ -29,6 +28,4 @@ my $str = q|a=1 b="2" c ="33" d= '12'|;
 
 my $result = $parser->CONFIG($str);
 
-is_deeply($result, { a => 1, b => 2, c => 33, d => 12 } )
-  || warn Dumper $result;
-
+is_deeply($result, { a => 1, b => 2, c => 33, d => 12 } );
