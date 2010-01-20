@@ -1,4 +1,4 @@
-#! /usr/local/bin/perl -sw
+#! /usr/bin/perl -w
 
 package Foo;
 use base Parse::RecDescent;
@@ -8,6 +8,7 @@ sub print_cat {
 }
 
 package main;
+
 
 $parse = new Parse::RecDescent(<<'EOG');
 	input	 :	"cat"

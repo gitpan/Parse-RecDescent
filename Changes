@@ -573,5 +573,7 @@ Revision history for Parse-RecDescent
     - Fixed subtle bug in leftop and rightop caused by removal of $&
 
 
-1.962.2  Fri Aug 28 13:39:33 2009
+1.963  Thu Jan 21 09:13:19 2010
 
+    - Fixed even subtler bug in leftop and rightop caused by removal of $&
+      (Thanks Francesco)

@@ -1594,7 +1594,7 @@ sub code($$$$)
             ' . $op->code(@_[1..2]) . '
             ' . ($op->isterminal() ? 'pop @item;' : '$backtrack=1;' ) . '
             ' . (ref($op) eq 'Parse::RecDescent::Token'
-                ? 'if (defined $2) {push @item, $item{'.($self->{name}||$self->{hashname}).'}=$2; $backtrack=1;}'
+                ? 'if (defined $1) {push @item, $item{'.($self->{name}||$self->{hashname}).'}=$1; $backtrack=1;}'
                 : "" ) . '
             ' . $rightarg->code(@_[1..2]) . '
             $savetext = $text;
@@ -1620,7 +1620,7 @@ sub code($$$$)
             ' . $op->code(@_[1..2]) . '
             $savetext = $text;
             ' . ($op->isterminal() ? 'pop @item;' : "" ) . '
-            ' . (ref($op) eq 'Parse::RecDescent::Token' ? 'do { push @item, $item{'.($self->{name}||$self->{hashname}).'}=$2; } if defined $2;' : "" ) . '
+            ' . (ref($op) eq 'Parse::RecDescent::Token' ? 'do { push @item, $item{'.($self->{name}||$self->{hashname}).'}=$1; } if defined $1;' : "" ) . '
           }
           $text = $savetext;
           pop @item if $backtrack;
@@ -1723,7 +1723,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-use version; our $VERSION = qv('1.962.2');
+our $VERSION = '1.963';
 
 # BUILDING A PARSER
 
@@ -1772,7 +1772,12 @@ sub Compile($$$$) {
     die "Compilation of Parse::RecDescent grammars not yet implemented\n";
 }
 
-sub DESTROY {}  # SO AUTOLOADER IGNORES IT
+sub DESTROY {
+    my ($self) = @_;
+    my $namespace = $self->{namespace};
+    $namespace =~ s/Parse::RecDescent:://;
+    delete $Parse::RecDescent::{$namespace.'::'};
+}
 
 # BUILDING A GRAMMAR....
 
@@ -3120,7 +3125,7 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.94 of Parse::RecDescent,
+This document describes version 1.963 of Parse::RecDescent
 released April  9, 2003.
 
 =head1 SYNOPSIS
