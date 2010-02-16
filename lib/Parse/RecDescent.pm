@@ -67,6 +67,8 @@ sub Precompile
             || croak("Can't compile bad grammar")
                 if $grammar;
 
+        $self->{_precompiled} = 1;
+
         foreach ( keys %{$self->{rules}} )
             { $self->{rules}{$_}{changed} = 1 }
 
@@ -1723,7 +1725,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-our $VERSION = '1.963';
+our $VERSION = '1.964';
 
 # BUILDING A PARSER
 
@@ -1776,7 +1778,9 @@ sub DESTROY {
     my ($self) = @_;
     my $namespace = $self->{namespace};
     $namespace =~ s/Parse::RecDescent:://;
-    delete $Parse::RecDescent::{$namespace.'::'};
+    if (!$self->{_precompiled}) {
+        delete $Parse::RecDescent::{$namespace.'::'};
+    }
 }
 
 # BUILDING A GRAMMAR....
@@ -2363,11 +2367,12 @@ sub _generate($$$;$$)
         }
         elsif ($grammar =~ m/$LITERAL/gco)
         {
-            ($code = $1) =~ s/\\\\/\\/g;
-            _parse("a literal terminal", $aftererror,$line,$1);
+            my $literal = $1;
+            ($code = $literal) =~ s/\\\\/\\/g;
+            _parse("a literal terminal", $aftererror,$line,$literal);
             $item = new Parse::RecDescent::Literal($code,$lookahead,$line);
             $prod and $prod->additem($item)
-                  or  _no_rule("literal terminal",$line,"'$1'");
+                  or  _no_rule("literal terminal",$line,"'$literal'");
         }
         elsif ($grammar =~ m/$INTERPLIT/gco)
         {
@@ -3125,7 +3130,7 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.963 of Parse::RecDescent
+This document describes version 1.964 of Parse::RecDescent
 released April  9, 2003.
 
 =head1 SYNOPSIS

@@ -577,3 +577,10 @@ Revision history for Parse-RecDescent
 
     - Fixed even subtler bug in leftop and rightop caused by removal of $&
       (Thanks Francesco)
+
+
+1.964  Wed Feb 17 09:33:39 2010
+
+    - Fixed bug with undefined $1 when parsing literals (thanks Dan!)
+
+    - Fixed premature namespace destruction bug with compiled grammars
