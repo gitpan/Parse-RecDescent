@@ -1725,7 +1725,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-our $VERSION = '1.964';
+our $VERSION = '1.965001';
 
 # BUILDING A PARSER
 
@@ -2928,6 +2928,24 @@ sub set_autoflush {
 use vars '$errortext';
 use vars '$errorprefix';
 
+sub redirect_reporting_to(*;$) {
+    my ($filehandle, $mode) = (@_, '>');
+
+    # Ensure filehandles duplicate...
+    $mode =~ s{ (?<! & ) $ }{&}xms;
+
+    open (ERROR, $mode, $filehandle) or return;
+    set_autoflush(\*ERROR);
+
+    open (TRACE, $mode, $filehandle) or return;
+    set_autoflush(\*TRACE);
+
+    open (TRACECONTEXT, $mode, $filehandle) or return;
+    set_autoflush(\*TRACECONTEXT);
+
+    return 1;
+}
+
 open (ERROR, ">&STDERR");
 format ERROR =
 @>>>>>>>>>>>>>>>>>>>>: ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -3130,7 +3148,7 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.964 of Parse::RecDescent
+This document describes version 1.965001 of Parse::RecDescent
 released April  9, 2003.
 
 =head1 SYNOPSIS
@@ -4645,6 +4663,33 @@ also makes it easy to turn them into command line flags ("-RD_ERRORS",
 The corresponding directives are useful to "hardwire" the various
 debugging features into a particular grammar (rather than having to set
 and reset external variables).
+
+=item Redirecting diagnostics
+
+The diagnostics provided by the tracing mechanism go to STDERR by default,
+but can be directed to a specific filehandle by calling the
+C<Parse::RecDescent::redirect_reporting_to()> subroutine (which must be fully
+qualified, as it is not exported).
+
+This subroutine expects either one or two arguments. The first is the
+filehandle you want all diagnostics redirected to. It must already be
+open for output, and may be specified as a typeglob, or as a reference
+to a filehandle:
+
+    Parse::RecDescent::redirect_reporting_to(*STDOUT);
+    Parse::RecDescent::redirect_reporting_to($fh);
+
+The optional second argument specifies the mode in which data is to be written
+to the handle. By default the "overwrite" mode ('>') is used, but you can
+explicitly pass '>>' to select "append" mode:
+
+    # Append reports to my log file...
+    Parse::RecDescent::redirect_reporting_to($my_log_file, '>>');
+
+The subroutine returns true if it successfully redirects all reporting
+streams, or false if it is not able to do so (typically because you gave
+it an invalid filehandle).
+
 
 =item Consistency checks
 

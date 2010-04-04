@@ -584,3 +584,19 @@ Revision history for Parse-RecDescent
     - Fixed bug with undefined $1 when parsing literals (thanks Dan!)
 
     - Fixed premature namespace destruction bug with compiled grammars
+
+
+1.964001  Tue Feb 23 15:15:18 2010
+
+    - Updated version number because versioning is a neverending
+      nightmare in Perl 5 (thanks Matt)
+
+
+
+1.965001  Sun Apr  4 15:00:10 2010
+
+    - Removed all references to /opts version of perl interpreter
+
+    - Added Parse::RecDescent::redirect_reporting_to()
+      to enable ERROR, TRACE, and TRACECONTEXT filehandles to be 
+      easily redirected.

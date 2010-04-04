@@ -1,4 +1,3 @@
-#! /opt/local/bin/perl5.10.0
 
 
 use Parse::RecDescent;
