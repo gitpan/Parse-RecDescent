@@ -1,24 +1,16 @@
 Build.PL
 Changes
 MANIFEST
-META.yml # Will be created by "make dist"
 Makefile.PL
 README
-lib/Parse/RecDescent.pm
-t/00.load.t
-t/pod.t
-tutorial/tutorial.html
-tutorial/TPJ-PRD-proc.gif
-tutorial/TPJ-yacc-proc.gif
-tutorial/TPJ_maze.gif
-tutorial/TPJ_tree.gif
+ToDo
 demo/demo.c
 demo/demo.pl
 demo/demo_Cgrammar.pl
 demo/demo_Cgrammar_v2.pl
 demo/demo_LaTeXish.pl
 demo/demo_LaTeXish_autoact.pl
-demo/demo_NL2SQL
+demo/demo_NL2SQL.pl
 demo/demo_OOautoparsetree.pl
 demo/demo_OOparsetree.pl
 demo/demo_PerlCSV.pl
@@ -77,9 +69,21 @@ demo/demo_textgen.pl
 demo/demo_tokens.pl
 demo/demo_undumper.pl
 demo/demo_whoson.pl
+lib/Parse/RecDescent.pm
+t/00.load.t
 t/basics.t
+t/leftop_cap.t
+t/pod.t
 t/re_capture_return.t
 t/separated_repetition.t
-t/leftop_cap.t
 t/skip.t
 t/skip_dynamic.t
+t/text.t
+t/util.pl
+tutorial/TPJ-PRD-proc.gif
+tutorial/TPJ-yacc-proc.gif
+tutorial/TPJ_maze.gif
+tutorial/TPJ_tree.gif
+tutorial/tutorial.html
+META.yml                                 Module YAML meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)
