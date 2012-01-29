@@ -640,3 +640,30 @@ Revision history for Parse-RecDescent
 
     - fixed a few broken links in the pod
 
+1.967001  Sat Jan 28 20:54:48 2012
+
+    - Addressed RT.cpan.org #28314: regex modifiers for tokens not
+      honored during regex syntax check. (Thanks SADAHIRO!)
+
+    - Fixed some POD typos
+
+    - Added message on how to turn off "default" hint value in the
+      default hint value ($::RD_HINT = 0). RT.cpan.org # #4898.
+
+    - Modified _write_ERROR to call formline twice to avoid repeated
+      $errorprefix.
+
+    - Collected match tracing messages into a common function which
+      takes into account positive/negative lookahead.
+
+    - Addressed RT.cpan.org #74258: RD_AUTOSTUB does not work with
+      precompiled parsers.  (Thanks Yuri!)
+
+      - Special-case $::RD_AUTOSTUB eq 1.  $::RD_AUTOSTUB's value is
+        ignored, and the unknown subrule 'rule' has a production
+        "rule: 'rule'", rather than "rule: '1'".
+
+      - Change Parse::RecDescent::new to call $self->Replace with only
+        the grammar as an argument.  That prevents the $compiling
+        argument to new() from being incorrectly interpreted as
+        $isimplicit.

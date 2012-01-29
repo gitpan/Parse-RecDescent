@@ -63,7 +63,10 @@ sub Precompile
                  "to class $class in module file '$modulefile'\n"
                     if $grammar && $sourcefile;
 
-        $self = Parse::RecDescent->new($grammar,1,$class)
+        $self = Parse::RecDescent->new($grammar, # $grammar
+                                       1,        # $compiling
+                                       $class    # $namespace
+                                 )
             || croak("Can't compile bad grammar")
                 if $grammar;
 
@@ -443,7 +446,7 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
             : '') . '
 
         $_[1] = $text;  # NOT SURE THIS IS NEEDED
-        Parse::RecDescent::_trace(q{<<Didn\'t match rule>>},
+        Parse::RecDescent::_trace(q{<<'.Parse::RecDescent::_matchtracemessage($self,1).' rule>>},
                      Parse::RecDescent::_tracefirst($_[1]),
                      q{' . $self->{"name"} .'},
                      $tracelevel)
@@ -462,7 +465,7 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
     $return = $item[$#item] unless defined $return;
     if (defined $::RD_TRACE)
     {
-        Parse::RecDescent::_trace(q{>>Matched rule<< (return value: [} .
+        Parse::RecDescent::_trace(q{>>'.Parse::RecDescent::_matchtracemessage($self).' rule<< (return value: [} .
                       $return . q{])}, "",
                       q{' . $self->{"name"} .'},
                       $tracelevel);
@@ -873,7 +876,7 @@ sub code($$$$)
 
     $code .=
 '
-        Parse::RecDescent::_trace(q{>>Matched production: ['
+        Parse::RecDescent::_trace(q{>>'.Parse::RecDescent::_matchtracemessage($self).' production: ['
                       . $self->describe . ']<<},
                       Parse::RecDescent::_tracefirst($text),
                       q{' . $rule->{name} . '},
@@ -933,11 +936,11 @@ sub code($$$$)
         $_tok = ($_noactions) ? 0 : do ' . $self->{"code"} . ';
         ' . ($self->{"lookahead"}<0?'if':'unless') . ' (defined $_tok)
         {
-            Parse::RecDescent::_trace(q{<<Didn\'t match action>> (return value: [undef])})
+            Parse::RecDescent::_trace(q{<<'.Parse::RecDescent::_matchtracemessage($self,1).' action>> (return value: [undef])})
                     if defined $::RD_TRACE;
             last;
         }
-        Parse::RecDescent::_trace(q{>>Matched action<< (return value: [}
+        Parse::RecDescent::_trace(q{>>'.Parse::RecDescent::_matchtracemessage($self).' action<< (return value: [}
                       . $_tok . q{])},
                       Parse::RecDescent::_tracefirst($text))
                         if defined $::RD_TRACE;
@@ -986,14 +989,14 @@ sub code($$$$)
         $_tok = do { ' . $self->{"code"} . ' };
         if (defined($_tok))
         {
-            Parse::RecDescent::_trace(q{>>Matched directive<< (return value: [}
+            Parse::RecDescent::_trace(q{>>'.Parse::RecDescent::_matchtracemessage($self).' directive<< (return value: [}
                         . $_tok . q{])},
                         Parse::RecDescent::_tracefirst($text))
                             if defined $::RD_TRACE;
         }
         else
         {
-            Parse::RecDescent::_trace(q{<<Didn\'t match directive>>},
+            Parse::RecDescent::_trace(q{<<'.Parse::RecDescent::_matchtracemessage($self,1).' directive>>},
                         Parse::RecDescent::_tracefirst($text))
                             if defined $::RD_TRACE;
         }
@@ -1135,9 +1138,9 @@ sub new ($$$$$$)
 
     if (!eval "no strict;
            local \$SIG{__WARN__} = sub {0};
-           '' =~ m$ldel$pattern$rdel" and $@)
+           '' =~ m$ldel$pattern$rdel$mod" and $@)
     {
-        Parse::RecDescent::_warn(3, "Token pattern \"m$ldel$pattern$rdel\"
+        Parse::RecDescent::_warn(3, "Token pattern \"m$ldel$pattern$rdel$mod\"
                          may not be a valid regular expression",
                        $_[5]);
         $@ =~ s/ at \(eval.*/./;
@@ -1424,7 +1427,7 @@ sub code($$$$)
         . ')))
         {
             '.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
-            Parse::RecDescent::_trace(q{<<Didn\'t match subrule: ['
+            Parse::RecDescent::_trace(q{<<'.Parse::RecDescent::_matchtracemessage($self,1).' subrule: ['
             . $self->{subrule} . ']>>},
                           Parse::RecDescent::_tracefirst($text),
                           q{' . $rule->{"name"} .'},
@@ -1433,7 +1436,7 @@ sub code($$$$)
             $expectation->failed();
             last;
         }
-        Parse::RecDescent::_trace(q{>>Matched subrule: ['
+        Parse::RecDescent::_trace(q{>>'.Parse::RecDescent::_matchtracemessage($self).' subrule: ['
                     . $self->{subrule} . ']<< (return value: [}
                     . $_tok . q{]},
 
@@ -1540,7 +1543,7 @@ sub code($$$$)
                         : 'sub { \\@arg }')
         . ')))
         {
-            Parse::RecDescent::_trace(q{<<Didn\'t match repeated subrule: ['
+            Parse::RecDescent::_trace(q{<<'.Parse::RecDescent::_matchtracemessage($self,1).' repeated subrule: ['
             . $self->describe . ']>>},
                           Parse::RecDescent::_tracefirst($text),
                           q{' . $rule->{"name"} .'},
@@ -1548,7 +1551,7 @@ sub code($$$$)
                             if defined $::RD_TRACE;
             last;
         }
-        Parse::RecDescent::_trace(q{>>Matched repeated subrule: ['
+        Parse::RecDescent::_trace(q{>>'.Parse::RecDescent::_matchtracemessage($self).' repeated subrule: ['
                     . $self->{subrule} . ']<< (}
                     . @$_tok . q{ times)},
 
@@ -1740,7 +1743,7 @@ sub code($$$$)
     $code .= '
         unless ($repcount>='.$self->{min}.')
         {
-            Parse::RecDescent::_trace(q{<<Didn\'t match operator: ['
+            Parse::RecDescent::_trace(q{<<'.Parse::RecDescent::_matchtracemessage($self,1).' operator: ['
                           . $self->describe
                           . ']>>},
                           Parse::RecDescent::_tracefirst($text),
@@ -1750,7 +1753,7 @@ sub code($$$$)
             $expectation->failed();
             last;
         }
-        Parse::RecDescent::_trace(q{>>Matched operator: ['
+        Parse::RecDescent::_trace(q{>>'.Parse::RecDescent::_matchtracemessage($self).' operator: ['
                       . $self->describe
                       . ']<< (return value: [}
                       . qq{@{$_tok||[]}} . q{]},
@@ -1823,7 +1826,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-our $VERSION = '1.966_002';
+our $VERSION = '1.967001';
 $VERSION = eval $VERSION;
 
 # BUILDING A PARSER
@@ -1835,7 +1838,8 @@ sub _nextnamespace()
     return "Parse::RecDescent::" . $nextnamespace++;
 }
 
-sub new ($$$)
+# ARGS ARE: $class, $grammar, $compiling, $namespace
+sub new ($$$$)
 {
     my $class = ref($_[0]) || $_[0];
     local $Parse::RecDescent::compiling = $_[2];
@@ -1864,12 +1868,10 @@ sub new ($$$)
     }
 
     bless $self, $class;
-    shift;
-    return $self->Replace(@_)
+    return $self->Replace($_[1])
 }
 
 sub Compile($$$$) {
-
     die "Compilation of Parse::RecDescent grammars not yet implemented\n";
 }
 
@@ -1884,15 +1886,21 @@ sub DESTROY {
 
 # BUILDING A GRAMMAR....
 
+# ARGS ARE: $self, $grammar, $isimplicit, $isleftop
 sub Replace ($$)
 {
+    # set $replace = 1 for _generate
     splice(@_, 2, 0, 1);
+
     return _generate(@_);
 }
 
+# ARGS ARE: $self, $grammar, $isimplicit, $isleftop
 sub Extend ($$)
 {
+    # set $replace = 0 for _generate
     splice(@_, 2, 0, 0);
+
     return _generate(@_);
 }
 
@@ -2800,7 +2808,8 @@ sub _generate($$$;$$)
     {
         local $::RD_HINT = defined $::RD_HINT ? $::RD_HINT : 1;
         _hint('Set $::RD_HINT (or -RD_HINT if you\'re using "perl -s")
-               for hints on fixing these problems.');
+               for hints on fixing these problems.  Use $::RD_HINT = 0
+               to disable this message.');
     }
     if ($ERRORS) { $ERRORS=0; return }
     return $self;
@@ -2874,7 +2883,10 @@ sub _check_grammar ($)
                 }
                 else    # EXPERIMENTAL
                 {
-                    my $rule = $::RD_AUTOSTUB || qq{'$call'};
+                    my $rule = qq{'$call'};
+                    if ($::RD_AUTOSTUB and $::RD_AUTOSTUB ne "1") {
+                        $rule = $::RD_AUTOSTUB;
+                    }
                     _warn(1,"Autogenerating rule: $call")
                     and
                     _hint("A call was made to a subrule
@@ -2885,7 +2897,7 @@ sub _check_grammar ($)
                            ($call : $rule) was
                            automatically created.");
 
-                    $self->_generate("$call : $rule",0,1);
+                    $self->_generate("$call: $rule",0,1);
                 }
             }
         }
@@ -3044,8 +3056,11 @@ sub _write_ERROR {
     return if $errortext !~ /\S/;
     $errorprefix =~ s/\s+\Z//;
     local $^A = q{};
-    formline(<<'END_FORMAT', $errorprefix, $errortext, $errortext);
+
+    formline(<<'END_FORMAT', $errorprefix, $errortext);
 @>>>>>>>>>>>>>>>>>>>>: ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+END_FORMAT
+    formline(<<'END_FORMAT', $errortext);
 ~~                     ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 END_FORMAT
     print {*STDERR} $^A;
@@ -3190,6 +3205,27 @@ sub _trace($;$$$)
     }
 }
 
+sub _matchtracemessage
+{
+    my ($self, $reject) = @_;
+
+    my $prefix = '';
+    my $postfix = '';
+    my $matched = not $reject;
+    my @t = ("Matched", "Didn't match");
+    if (exists $self->{lookahead} and $self->{lookahead})
+    {
+        $postfix = $reject ? "(reject)" : "(keep)";
+        $prefix = "...";
+        if ($self->{lookahead} < 0)
+        {
+            $prefix .= '!';
+            $matched = not $matched;
+        }
+    }
+    $prefix . ($matched ? $t[0] : $t[1]) . $postfix;
+}
+
 sub _parseunneg($$$$$)
 {
     _parse($_[0],$_[1],$_[3],$_[4]);
@@ -3247,7 +3283,7 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.966_002 of Parse::RecDescent
+This document describes version 1.967001 of Parse::RecDescent
 released April  9, 2003.
 
 =head1 SYNOPSIS
@@ -3741,7 +3777,7 @@ C<number> subrule. In other words, successive calls to a subrule
 overwrite the corresponding entry in C<%item>. Once again, the
 solution is to rename each subrule in its own rule:
 
-    range: '(' from_num '..' to_num )'
+    range: '(' from_num '..' to_num ')'
         { $return = $item{from_num} }
 
     from_num: number
@@ -4245,18 +4281,30 @@ et cetera.
 
 Early in prototyping, many such "stubs" may be required, so
 C<Parse::RecDescent> provides a means of automating their definition.
-If the variable C<$::RD_AUTOSTUB> is defined when a parser is built,
-a subrule reference to any non-existent rule (say, C<sr>),
-causes a "stub" rule of the form:
+If the variable C<$::RD_AUTOSTUB> is defined when a parser is built, a
+subrule reference to any non-existent rule (say, C<subrule>), will
+cause a "stub" rule to be automatically defined in the generated
+parser.  If C<$::RD_AUTOSTUB eq '1'> or is false, a stub rule of the
+form:
 
-    sr: 'sr'
+    subrule: 'subrule'
 
-to be automatically defined in the generated parser.
-A level 1 warning is issued for each such "autostubbed" rule.
+will be generated.  The special-case for a value of C<'1'> is to allow
+the use of the B<perl -s> with B<-RD_AUTOSTUB> without generating
+C<subrule: '1'> per below. If C<$::RD_AUTOSTUB> is true, a stub rule
+of the form:
 
-Hence, with C<$::AUTOSTUB> defined, it is possible to only partially
-specify a grammar, and then "fake" matches of the unspecified
-(sub)rules by just typing in their name.
+    subrule: $::RD_AUTOSTUB
+
+will be generated.  C<$::RD_AUTOSTUB> must contain a valid production
+item, no checking is performed.  No lazy evaluation of
+C<$::RD_AUTOSTUB> is performed, it is evaluated at the time the Parser
+is generated.
+
+Hence, with C<$::RD_AUTOSTUB> defined, it is possible to only
+partially specify a grammar, and then "fake" matches of the
+unspecified (sub)rules by just typing in their name, or a literal
+value that was assigned to C<$::RD_AUTOSTUB>.
 
 
 
@@ -4764,7 +4812,7 @@ can be moderated in only one respect: if C<$::RD_TRACE> has an
 integer value (I<N>) greater than 1, only the I<N> characters of
 the "current parsing context" (that is, where in the input string we
 are at any point in the parse) is reported at any time.
-   >
+
 C<$::RD_TRACE> is mainly useful for debugging a grammar that isn't
 behaving as you expected it to. To this end, if C<$::RD_TRACE> is
 defined when a parser is built, any actual parser code which is
@@ -6177,12 +6225,20 @@ L<http://github.com/jtbraun/Parse-RecDescent>
 
 Visit L<http://www.perlfoundation.org/perl5/index.cgi?parse_recdescent> to sign up for the mailing list.
 
-L<http://www.PerlMonks.org> is also a good place to ask questions.
+L<http://www.PerlMonks.org> is also a good place to ask
+questions. Previous posts about Parse::RecDescent can typically be
+found with this search:
+L<http://perlmonks.org/index.pl?node=recdescent>.
 
 =head2 FAQ
 
 Visit L<Parse::RecDescent::FAQ> for answers to frequently (and not so
-frequently) asked questions about Parse::RecDescent
+frequently) asked questions about Parse::RecDescent.
+
+=head2 View/Report Bugs
+
+To view the current bug list or report a new issue visit
+L<https://rt.cpan.org/Public/Dist/Display.html?Name=Parse-RecDescent>.
 
 =head1 SEE ALSO
 
