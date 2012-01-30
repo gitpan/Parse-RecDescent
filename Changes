@@ -675,3 +675,8 @@ Revision history for Parse-RecDescent
       backslashes inside of regex patterns.
 
     - Skip tests in t/reentry.t if Test::Warn isn't available.
+
+1.967003  Mon Jan 30 07:24:53 2012
+
+    - Remove the 'use 5.10' from t/skip_dynamic.t, it runs fine
+      against Perl 5.8.9.
