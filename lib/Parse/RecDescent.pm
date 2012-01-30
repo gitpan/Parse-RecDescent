@@ -1826,7 +1826,7 @@ use vars qw ( $AUTOLOAD $VERSION );
 
 my $ERRORS = 0;
 
-our $VERSION = '1.967001';
+our $VERSION = '1.967002';
 $VERSION = eval $VERSION;
 
 # BUILDING A PARSER
@@ -1916,7 +1916,7 @@ my $NEGLOOKAHEAD    = '\G(\s*\.\.\.\!)';
 my $POSLOOKAHEAD    = '\G(\s*\.\.\.)';
 my $RULE        = '\G\s*(\w+)[ \t]*:';
 my $PROD        = '\G\s*([|])';
-my $TOKEN       = q{\G\s*/((\\\\/|[^/])*)/([cgimsox]*)};
+my $TOKEN       = q{\G\s*/((\\\\/|\\\\\\\\|[^/])*)/([cgimsox]*)};
 my $MTOKEN      = q{\G\s*(m\s*[^\w\s])};
 my $LITERAL     = q{\G\s*'((\\\\['\\\\]|[^'])*)'};
 my $INTERPLIT       = q{\G\s*"((\\\\["\\\\]|[^"])*)"};
@@ -3283,8 +3283,8 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.967001 of Parse::RecDescent
-released April  9, 2003.
+This document describes version 1.967002 of Parse::RecDescent
+released January 29th, 2012.
 
 =head1 SYNOPSIS
 

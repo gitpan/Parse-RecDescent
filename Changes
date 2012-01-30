@@ -667,3 +667,11 @@ Revision history for Parse-RecDescent
         the grammar as an argument.  That prevents the $compiling
         argument to new() from being incorrectly interpreted as
         $isimplicit.
+
+1.967002  Sun Jan 29 19:13:04 2012
+
+    - Addressed RT.cpan.org #29966: regex with single backslash not
+      recognized.  Changed the definition of $TOKEN to handle
+      backslashes inside of regex patterns.
+
+    - Skip tests in t/reentry.t if Test::Warn isn't available.
