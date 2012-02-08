@@ -14,13 +14,15 @@ use vars qw ( $skip );
 my $MAXREP  = 100_000_000;  # REPETITIONS MATCH AT MOST 100,000,000 TIMES
 
 
+#ifndef RUNTIME
 sub import  # IMPLEMENT PRECOMPILER BEHAVIOUR UNDER:
         #    perl -MParse::RecDescent - <grammarfile> <classname>
 {
     local *_die = sub { print @_, "\n"; exit };
 
     my ($package, $file, $line) = caller;
-    if (substr($file,0,1) eq '-' && $line == 0)
+
+    if ($file eq '-' && $line == 0)
     {
         _die("Usage: perl -MLocalTest - <grammarfile> <classname>")
             unless @ARGV == 2;
@@ -29,9 +31,10 @@ sub import  # IMPLEMENT PRECOMPILER BEHAVIOUR UNDER:
 
         local *IN;
         open IN, $sourcefile
-            or _die("Can't open grammar file '$sourcefile'");
-
-        my $grammar = join '', <IN>;
+            or _die(qq{Can't open grammar file "$sourcefile"});
+        local $/; #
+        my $grammar = <IN>;
+        close IN;
 
         Parse::RecDescent->Precompile($grammar, $class, $sourcefile);
         exit;
@@ -40,7 +43,13 @@ sub import  # IMPLEMENT PRECOMPILER BEHAVIOUR UNDER:
 
 sub Save
 {
-    my ($self, $class) = @_;
+    my $self = shift;
+    my %opt;
+    if ('HASH' eq ref $_[0]) {
+        %opt = (%opt, %{$_[0]});
+        shift;
+    }
+    my ($class) = @_;
     $self->{saving} = 1;
     $self->Precompile(undef,$class);
     $self->{saving} = 0;
@@ -48,51 +57,104 @@ sub Save
 
 sub Precompile
 {
-        my ($self, $grammar, $class, $sourcefile) = @_;
+    my $self = shift;
+    my %opt = ( -standalone => 0 );
+    if ('HASH' eq ref $_[0]) {
+        %opt = (%opt, %{$_[0]});
+        shift;
+    }
+    my ($grammar, $class, $sourcefile) = @_;
 
-        $class =~ /^(\w+::)*\w+$/ or croak("Bad class name: $class");
+    $class =~ /^(\w+::)*\w+$/ or croak("Bad class name: $class");
 
-        my $modulefile = $class;
-        $modulefile =~ s/.*:://;
-        $modulefile .= ".pm";
+    my $modulefile = $class;
+    $modulefile =~ s/.*:://;
+    $modulefile .= ".pm";
 
-        open OUT, ">", $modulefile
-            or croak("Can't write to new module file '$modulefile'");
+    my $runtime_package = 'Parse::RecDescent::_Runtime';
+    my $code;
 
-        print STDERR "precompiling grammar from file '$sourcefile'\n",
-                 "to class $class in module file '$modulefile'\n"
-                    if $grammar && $sourcefile;
+    local *OUT;
+    open OUT, ">", $modulefile
+      or croak("Can't write to new module file '$modulefile'");
 
-        $self = Parse::RecDescent->new($grammar, # $grammar
-                                       1,        # $compiling
-                                       $class    # $namespace
-                                 )
-            || croak("Can't compile bad grammar")
-                if $grammar;
+    print STDERR "precompiling grammar from file '$sourcefile'\n",
+      "to class $class in module file '$modulefile'\n"
+      if $grammar && $sourcefile;
 
-        $self->{_precompiled} = 1;
+    # Make the resulting pre-compiled parser stand-alone by
+    # including the contents of Parse::RecDescent as
+    # Parse::RecDescent::Runtime in the resulting precompiled
+    # parser.
+    if ($opt{-standalone}) {
+        local *IN;
+        open IN, '<', $Parse::RecDescent::_FILENAME
+          or croak("Can't open $Parse::RecDescent::_FILENAME for standalone pre-compilation: $!\n");
+        my $exclude = 0;
+        print OUT "{\n";
+        while (<IN>) {
+            if ($_ =~ /^\s*#\s*ifndef\s+RUNTIME\s*$/) {
+                ++$exclude;
+            }
+            if ($exclude) {
+                if ($_ =~ /^\s*#\s*endif\s$/) {
+                    --$exclude;
+                }
+            } else {
+                if ($_ =~ m/^__END__/) {
+                    last;
+                }
+                s/Parse::RecDescent/$runtime_package/gs;
+                print OUT $_;
+            }
+        }
+        close IN;
+        print OUT "}\n";
+    }
 
-        foreach ( keys %{$self->{rules}} )
-            { $self->{rules}{$_}{changed} = 1 }
+    $self = Parse::RecDescent->new($grammar,  # $grammar
+                                   1,         # $compiling
+                                   $class     # $namespace
+                             )
+      || croak("Can't compile bad grammar")
+      if $grammar;
 
-        print OUT "package $class;\nuse Parse::RecDescent;\n\n";
+    $self->{_precompiled} = 1;
 
-        print OUT "{ my \$ERRORS;\n\n";
+    foreach ( keys %{$self->{rules}} ) {
+        $self->{rules}{$_}{changed} = 1;
+    }
 
-        print OUT $self->_code();
 
-        print OUT "}\npackage $class; sub new { ";
-        print OUT "my ";
+    print OUT "package $class;\n";
+    if (not $opt{-standalone}) {
+        print OUT "use Parse::RecDescent;\n";
+    }
 
-        require Data::Dumper;
-        print OUT Data::Dumper->Dump([$self], [qw(self)]);
+    print OUT "{ my \$ERRORS;\n\n";
 
-        print OUT "}";
+    $code = $self->_code();
+    if ($opt{-standalone}) {
+        $code =~ s/Parse::RecDescent/$runtime_package/gs;
+    }
+    print OUT $code;
 
-        close OUT
-            or croak("Can't write to new module file '$modulefile'");
+    print OUT "}\npackage $class; sub new { ";
+    print OUT "my ";
+
+    require Data::Dumper;
+    $code = Data::Dumper->Dump([$self], [qw(self)]);
+    if ($opt{-standalone}) {
+        $code =~ s/Parse::RecDescent/$runtime_package/gs;
+    }
+    print OUT $code;
+
+    print OUT "}";
+
+    close OUT
+      or croak("Can't write to new module file '$modulefile'");
 }
-
+#endif
 
 package Parse::RecDescent::LineCounter;
 
@@ -540,6 +602,12 @@ sub hasleftmost ($$)
     my ($self, $ref) = @_;
     return ${$self->{"items"}}[0] eq $ref  if scalar @{$self->{"items"}};
     return 0;
+}
+
+sub isempty($)
+{
+    my $self = shift;
+    return 0 == @{$self->{"items"}};
 }
 
 sub leftmostsubrule($)
@@ -1638,7 +1706,8 @@ sub code($$$$)
         OPLOOP: while (1)
         {
           $repcount = 0;
-          my  @item;
+          my @item;
+          my %item;
 ';
 
     $code .= '
@@ -1737,7 +1806,7 @@ sub code($$$$)
 
     $code .= '
           last;
-        }
+        } # end of OPLOOP
 ';
 
     $code .= '
@@ -1822,12 +1891,13 @@ sub message ($)
 package Parse::RecDescent;
 
 use Carp;
-use vars qw ( $AUTOLOAD $VERSION );
+use vars qw ( $AUTOLOAD $VERSION $_FILENAME);
 
 my $ERRORS = 0;
 
-our $VERSION = '1.967003';
+our $VERSION = '1.967_004';
 $VERSION = eval $VERSION;
+$_FILENAME=__FILE__;
 
 # BUILDING A PARSER
 
@@ -1970,7 +2040,7 @@ my $OTHER       = '\G\s*([^\s]+)';
 
 my @lines = 0;
 
-sub _generate($$$;$$)
+sub _generate
 {
     my ($self, $grammar, $replace, $isimplicit, $isleftop) = (@_, 0);
 
@@ -2257,11 +2327,16 @@ sub _generate($$$;$$)
             {
                 _parse("a skip marker", $aftererror,$line, $code );
                 $code =~ /\A\s*<skip:(.*)>\Z/s;
-                $item = new Parse::RecDescent::Directive(
-                          'my $oldskip = $skip; $skip='.$1.'; $oldskip',
-                          $lookahead,$line,$code);
-                $prod and $prod->additem($item)
+                if ($rule) {
+                    $item = new Parse::RecDescent::Directive(
+                        'my $oldskip = $skip; $skip='.$1.'; $oldskip',
+                        $lookahead,$line,$code);
+                    $prod and $prod->additem($item)
                       or  _no_rule($code,$line);
+                } else {
+                    #global <skip> directive
+                    $self->{skip} = $1;
+                }
             }
             elsif ($grammar =~ m/(?=$RULEVARPATMK)/gco
                 and do { ($code) = extract_codeblock($grammar,'{',undef,'<');
@@ -2913,6 +2988,23 @@ sub _check_grammar ($)
                    For example: \"$rule->{name}(s)\".");
             next;
         }
+
+    # CHECK FOR PRODUCTIONS FOLLOWING EMPTY PRODUCTIONS
+      {
+          my $hasempty;
+          my $prod;
+          foreach $prod ( @{$rule->{"prods"}} ) {
+              if ($hasempty) {
+                  _error("Production " . $prod->describe . " for \"$rule->{name}\"
+                         will never be reached (preceding empty production will
+                         always match first).");
+                  _hint("Reorder the grammar so that the empty production
+                         is last in the list or productions.");
+                  last;
+              }
+              $hasempty ||= $prod->isempty();
+          }
+      }
     }
 }
 
@@ -2921,12 +3013,14 @@ sub _check_grammar ($)
 sub _code($)
 {
     my $self = shift;
+    my $initial_skip = defined($self->{skip}) ? $self->{skip} : $skip;
+
     my $code = qq{
 package $self->{namespace};
 use strict;
 use vars qw(\$skip \$AUTOLOAD $self->{localvars} );
 \@$self->{namespace}\::ISA = ();
-\$skip = '$skip';
+\$skip = '$initial_skip';
 $self->{startcode}
 
 {
@@ -3283,7 +3377,7 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.967003 of Parse::RecDescent
+This document describes version 1.967_004 of Parse::RecDescent
 released January 29th, 2012.
 
 =head1 SYNOPSIS
@@ -3651,9 +3745,11 @@ prefix, which is the default for all terminal matches in all parsers
 built with C<Parse::RecDescent>.
 
 If you want to change the universal prefix using
-C<$Parse::RecDescent::skip>, be careful to set it I<before> creating the
-grammar object, because it is applied statically (when a grammar is
-built) rather than dynamically (when the grammar is used).
+C<$Parse::RecDescent::skip>, be careful to set it I<before> creating
+the grammar object, because it is applied statically (when a grammar
+is built) rather than dynamically (when the grammar is used).
+Alternatively you can provide a global C<E<lt>skip:...E<gt>> directive
+in your grammar before any rules (described later).
 
 The prefix for an individual production can be altered
 by using the C<E<lt>skip:...E<gt>> directive (described later).
@@ -4245,6 +4341,16 @@ structure like this:
 (except, of course, that each nested hash would also be blessed into
 the appropriate class).
 
+You can also specify a base class for the C<E<lt>autotreeE<gt>> directive.
+The supplied prefix will be prepended to the rule names when creating
+tree nodes.  The following are equivalent:
+
+    <autotree:MyBase::Class>
+    <autotree:MyBase::Class::>
+
+And will produce a root node blessed into the C<MyBase::Class::file>
+package in the example above.
+
 
 =head2 Autostubbing
 
@@ -4544,8 +4650,11 @@ or, better:
 
 The skip pattern is passed down to subrules, so setting the skip for
 the top-level rule as described above actually sets the prefix for the
-entire grammar (provided that you only call the method corresponding to
-the top-level rule itself). This is the preferred alternative to setting
+entire grammar (provided that you only call the method corresponding
+to the top-level rule itself). Alternatively, or if you have more than
+one top-level rule in your grammar, you can provide a global
+C<E<lt>skipE<gt>> directive prior to defining any rules in the
+grammar. These are the preferred alternatives to setting
 C<$Parse::RecDescent::skip>.
 
 Additionally, using C<E<lt>skipE<gt>> actually allows you to have
@@ -5827,15 +5936,21 @@ you could use:
 
     use Parse::RecDescent;
 
-    Parse::RecDescent->Precompile($grammar, "PreGrammar");
+    Parse::RecDescent->Precompile([$options_hashref], $grammar, "PreGrammar");
 
-The first argument is the grammar string, the second is the name of the class
-to be built. The name of the module file is generated automatically by
-appending ".pm" to the last element of the class name. Thus
+The first required argument is the grammar string, the second is the
+name of the class to be built. The name of the module file is
+generated automatically by appending ".pm" to the last element of the
+class name. Thus
 
     Parse::RecDescent->Precompile($grammar, "My::New::Parser");
 
 would produce a module file named Parser.pm.
+
+An optional hash reference may be supplied as the first argument to
+C<Precompile>.  This argument is currently EXPERIMENTAL, and may change
+in a future release of Parse::RecDescent.  The only supported option
+is currently C<-standalone>, see L</"Standalone Precompiled Parsers">.
 
 It is somewhat tedious to have to write a small Perl program just to
 generate a precompiled grammar class, so Parse::RecDescent has some special
@@ -5875,6 +5990,29 @@ the same, so whilst precompilation has an effect on I<set-up> speed,
 it has no effect on I<parsing> speed. RecDescent 2.0 will address that
 problem.
 
+=head3 Standalone Precompiled Parsers
+
+Until version 1.967003 of Parse::RecDescent, parser modules built with
+C<Precompile> were dependent on Parse::RecDescent.  Future
+Parse::RecDescent releases with different internal implementations
+would break pre-existing precompiled parsers.
+
+Version 1.967_004 added the ability for Parse::RecDescent to include
+itself in the resulting .pm file if you pass the boolean option
+C<-standalone> to C<Precompile>:
+
+    Parse::RecDescent->Precompile({ -standalone = 1, },
+        $grammar, "My::New::Parser");
+
+Parse::RecDescent is included as Parse::RecDescent::_Runtime in order
+to avoid conflicts between an installed version of Parse::RecDescent
+and a precompiled, standalone parser made with another version of
+Parse::RecDescent.  This renaming is experimental, and is subject to
+change in future versions.
+
+Precompiled parsers remain dependent on Parse::RecDescent by default,
+as this feature is still considered experimental.  In the future,
+standalone parsers will become the default.
 
 =head1 GOTCHAS
 
