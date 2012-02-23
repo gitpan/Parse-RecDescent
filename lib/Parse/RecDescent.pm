@@ -1895,7 +1895,7 @@ use vars qw ( $AUTOLOAD $VERSION $_FILENAME);
 
 my $ERRORS = 0;
 
-our $VERSION = '1.967006';
+our $VERSION = '1.967_007';
 $VERSION = eval $VERSION;
 $_FILENAME=__FILE__;
 
@@ -1950,6 +1950,34 @@ sub DESTROY {
     my $namespace = $self->{namespace};
     $namespace =~ s/Parse::RecDescent:://;
     if (!$self->{_precompiled}) {
+        # BEGIN WORKAROUND
+        # Perl has a bug that creates a circular reference between
+        # @ISA and that variable's stash:
+        #   https://rt.perl.org/rt3/Ticket/Display.html?id=92708
+        # Emptying the array before deleting the stash seems to
+        # prevent the leak.  Once the ticket above has been resolved,
+        # these two lines can be removed.
+        no strict 'refs';
+        @{$self->{namespace} . '::ISA'} = ();
+        # END WORKAROUND
+
+        # Some grammars may contain circular references between rules,
+        # such as:
+        #   a: 'ID' | b
+        #   b: '(' a ')'
+        # Unless these references are broken, the subs stay around on
+        # stash deletion below.  Iterate through the stash entries and
+        # for each defined code reference, set it to reference sub {}
+        # instead.
+        {
+            local $^W; # avoid 'sub redefined' warnings.
+            my $blank_sub = sub {};
+            while (my ($name, $glob) = each %{"Parse::RecDescent::$namespace\::"}) {
+                *$glob = $blank_sub if defined &$glob;
+            }
+        }
+
+        # Delete the namespace's stash
         delete $Parse::RecDescent::{$namespace.'::'};
     }
 }
@@ -3015,7 +3043,7 @@ sub _code($)
     my $self = shift;
     my $initial_skip = defined($self->{skip}) ? $self->{skip} : $skip;
 
-    my $code = qq{
+    my $code = qq!
 package $self->{namespace};
 use strict;
 use vars qw(\$skip \$AUTOLOAD $self->{localvars} );
@@ -3029,12 +3057,19 @@ local \$SIG{__WARN__} = sub {0};
 *$self->{namespace}::AUTOLOAD   = sub
 {
     no strict 'refs';
-    \$AUTOLOAD =~ s/^$self->{namespace}/Parse::RecDescent/;
-    goto &{\$AUTOLOAD};
+!
+# This generated code uses ${"AUTOLOAD"} rather than $AUTOLOAD in
+# order to avoid the circular reference documented here:
+#    https://rt.perl.org/rt3/Public/Bug/Display.html?id=110248
+# As a result of the investigation of
+#    https://rt.cpan.org/Ticket/Display.html?id=53710
+. qq!
+    \${"AUTOLOAD"} =~ s/^$self->{namespace}/Parse::RecDescent/;
+    goto &{\${"AUTOLOAD"}};
 }
 }
 
-};
+!;
     $code .= "push \@$self->{namespace}\::ISA, 'Parse::RecDescent';";
     $self->{"startcode"} = '';
 
@@ -3059,8 +3094,7 @@ sub AUTOLOAD    # ($parser, $text; $linenum, @args)
     croak "Could not find method: $AUTOLOAD\n" unless ref $_[0];
     my $class = ref($_[0]) || $_[0];
     my $text = ref($_[1]) eq 'SCALAR' ? ${$_[1]} : "$_[1]";
-    $_[0]->{lastlinenum} = $_[2]||_linecount($_[1]);
-    $_[0]->{lastlinenum} = _linecount($_[1]);
+    $_[0]->{lastlinenum} = _linecount($text);
     $_[0]->{lastlinenum} += ($_[2]||0) if @_ > 2;
     $_[0]->{offsetlinenum} = $_[0]->{lastlinenum};
     $_[0]->{fulltext} = $text;
@@ -3377,7 +3411,7 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 
 =head1 VERSION
 
-This document describes version 1.967006 of Parse::RecDescent
+This document describes version 1.967_007 of Parse::RecDescent
 released January 29th, 2012.
 
 =head1 SYNOPSIS

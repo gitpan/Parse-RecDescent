@@ -619,8 +619,10 @@ Revision history for Parse-RecDescent
     - Applied fix to restore skipped prefixes on match failure
       (thanks Jeremy!)
 
-    - Removed formats to eliminate problems with filehandle duplication
-      in forked environments
+    - *** NON-BACKWARDS COMPATIBLE CHANGE! *** Removed formats to
+      eliminate problems with filehandle duplication in forked
+      environments.  Removed redirect_reporting_to() in favor of using
+      STDERR for all error/trace output.
 
 1.966_002  Sun Jan 22 19:08:37 2012
 
@@ -759,4 +761,28 @@ Revision history for Parse-RecDescent
 1.967006   Fri Feb 10 20:48:48 2012
 
       - Bumped version to 1.967006 for non-development release.
+
+1.967_007      Thu Feb 23 07:26:03 2012
+
+      - Revised ExtUtils::MakeMaker build/configure version
+        requirements. (RT.cpan.org #74787, Thanks Paul!)
+
+      - Revised Text::Balanced prereq to require version 1.95,
+        necessary for t/skip.t to pass.
+        (RT.cpan.org #74787, Thanks Paul!)
+
+      - Removed unused version.pm prereq.
+
+      - Fix a circular reference memory leak caused by the use of
+        $AUTOLOAD in sub AUTOLOAD{} in the generated parser's
+        namespace.  Workaround documented in perl5 RT #110248.
+        Workaround a circular reference memory leak in ISA documented
+        by perl5 RT #92708.  A parser's DESTROY() method redefines all
+        subs before deleting the stash, to avoid circular references
+        between subrules. (RT #53710, thanks Andreas!)
+
+      - Parse::RecDescent::AUTOLOAD did not correctly handle
+        initializing the line counting mechanism when a reference to a
+        scalar was passed to the parser. (RT.cpan.org #27705, thanks
+        Justin!)
 

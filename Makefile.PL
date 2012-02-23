@@ -12,15 +12,14 @@ WriteMakefile(
     ABSTRACT_FROM    => 'lib/Parse/RecDescent.pm',
     PL_FILES         => {},
     BUILD_REQUIRES   => {
-        'ExtUtils::MakeMaker' => 6.62,
+        'ExtUtils::MakeMaker' => 6.5702,
     },
     CONFIGURE_REQUIRES   => {
-        'ExtUtils::MakeMaker' => 6.62,
+        'ExtUtils::MakeMaker' => 6.5702,
     },
     PREREQ_PM        => {
-        'Text::Balanced' => 0,
+        'Text::Balanced' => 1.95,
         'Test::More'     => 0,
-        'version'        => 0,
     },
     dist             => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean            => { FILES => 'Parse-RecDescent-* RD_TRACE' },

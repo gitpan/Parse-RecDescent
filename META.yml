@@ -4,9 +4,9 @@ author:
   - 'Damian Conway <DCONWAY@CPAN.org>'
   - 'Jeremy T. Braun <JTBRAUN@CPAN.org>'
 build_requires:
-  ExtUtils::MakeMaker: 6.62
+  ExtUtils::MakeMaker: 6.5702
 configure_requires:
-  ExtUtils::MakeMaker: 6.62
+  ExtUtils::MakeMaker: 6.5702
 dynamic_config: 1
 generated_by: 'ExtUtils::MakeMaker version 6.62, CPAN::Meta::Converter version 2.113640'
 license: unknown
@@ -20,6 +20,5 @@ no_index:
     - inc
 requires:
   Test::More: 0
-  Text::Balanced: 0
-  version: 0
-version: 1.967006
+  Text::Balanced: 1.95
+version: 1.967_007

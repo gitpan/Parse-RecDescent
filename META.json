@@ -23,22 +23,21 @@
    "prereqs" : {
       "build" : {
          "requires" : {
-            "ExtUtils::MakeMaker" : "6.62"
+            "ExtUtils::MakeMaker" : "6.5702"
          }
       },
       "configure" : {
          "requires" : {
-            "ExtUtils::MakeMaker" : "6.62"
+            "ExtUtils::MakeMaker" : "6.5702"
          }
       },
       "runtime" : {
          "requires" : {
             "Test::More" : 0,
-            "Text::Balanced" : 0,
-            "version" : 0
+            "Text::Balanced" : "1.95"
          }
       }
    },
-   "release_status" : "stable",
-   "version" : "1.967006"
+   "release_status" : "testing",
+   "version" : "1.967_007"
 }
