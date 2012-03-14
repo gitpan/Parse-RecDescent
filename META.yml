@@ -21,4 +21,4 @@ no_index:
 requires:
   Test::More: 0
   Text::Balanced: 1.95
-version: 1.967_007
+version: 1.967_008
